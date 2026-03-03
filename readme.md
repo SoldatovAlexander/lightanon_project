@@ -20,6 +20,6 @@
 ## 📦 Installation
 
 ```bash
-git clone [https://github.com/your-username/lightanon.git](https://github.com/your-username/lightanon.git)
+git clone https://github.com/SoldatovAlexander/lightanon_project.git
 cd lightanon
 pip install -r requirements.txt
