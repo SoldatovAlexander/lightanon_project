@@ -1,27 +1,36 @@
 import argparse
+from pathlib import Path
+
 import yaml
 import pandas as pd
 import polars as pl
 import lightanon as la
-import os
 
 
-def load_schema(config_path):
-    """Парсинг YAML конфига и превращение его в объекты правил."""
-    with open(config_path, 'r') as f:
+def load_schema(config_path: str):
+    """Parse YAML config and create rule instances."""
+    with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
+
+    if config is None:
+        return {}
+    if not isinstance(config, dict):
+        raise ValueError("Schema config must be a mapping: {column: {method, params}}")
 
     schema = {}
     for col, rule_def in config.items():
-        # rule_def пример: {'method': 'Hash', 'params': {'salt': 'xyz'}}
+        if not isinstance(rule_def, dict):
+            print(f"Warning: Invalid rule format for column '{col}', skipping")
+            continue
+
         method_name = rule_def.get('method')
         params = rule_def.get('params', {})
+        if not method_name:
+            print(f"Warning: Missing 'method' for column '{col}', skipping")
+            continue
 
-        # Динамический поиск класса правила
-        # Сначала ищем в core rules
         if hasattr(la.rules, method_name):
             rule_cls = getattr(la.rules, method_name)
-        # Потом в financial
         elif hasattr(la.financial, method_name):
             rule_cls = getattr(la.financial, method_name)
         else:
@@ -33,6 +42,40 @@ def load_schema(config_path):
     return schema
 
 
+def _read_dataframe(path: str, engine_name: str):
+    ext = Path(path).suffix.lower()
+    if engine_name == "polars":
+        if ext == ".csv":
+            return pl.read_csv(path)
+        if ext == ".parquet":
+            return pl.read_parquet(path)
+    else:
+        if ext == ".csv":
+            return pd.read_csv(path)
+        if ext == ".parquet":
+            return pd.read_parquet(path)
+    raise ValueError(f"Unsupported input format '{ext}'. Use .csv or .parquet")
+
+
+def _write_dataframe(df, path: str, engine_name: str):
+    ext = Path(path).suffix.lower()
+    if engine_name == "polars":
+        if ext == ".csv":
+            df.write_csv(path)
+            return
+        if ext == ".parquet":
+            df.write_parquet(path)
+            return
+    else:
+        if ext == ".csv":
+            df.to_csv(path, index=False)
+            return
+        if ext == ".parquet":
+            df.to_parquet(path, index=False)
+            return
+    raise ValueError(f"Unsupported output format '{ext}'. Use .csv or .parquet")
+
+
 def main():
     parser = argparse.ArgumentParser(description="LightAnon CLI Tool")
     parser.add_argument("input_file", help="Path to input CSV/Parquet")
@@ -42,28 +85,19 @@ def main():
 
     args = parser.parse_args()
 
-    # 1. Загрузка схемы
     print(f"Loading schema from {args.config}...")
     schema = load_schema(args.config)
+    if not schema:
+        print("Warning: schema is empty. Output will match input.")
 
-    # 2. Чтение данных
     print(f"Reading {args.input_file} using {args.engine}...")
-    if args.engine == "polars":
-        # Polars умеет scan_csv (лениво), но для начала сделаем read_csv
-        df = pl.read_csv(args.input_file) if args.input_file.endswith('.csv') else pl.read_parquet(args.input_file)
-    else:
-        df = pd.read_csv(args.input_file) if args.input_file.endswith('.csv') else pd.read_parquet(args.input_file)
+    df = _read_dataframe(args.input_file, args.engine)
 
-    # 3. Обработка
     engine = la.Engine(schema)
     clean_df = engine.run(df)
 
-    # 4. Сохранение
     print(f"Saving to {args.output_file}...")
-    if args.engine == "polars":
-        clean_df.write_csv(args.output_file)
-    else:
-        clean_df.to_csv(args.output_file, index=False)
+    _write_dataframe(clean_df, args.output_file, args.engine)
 
     print("Done!")
     print(engine.generate_report())

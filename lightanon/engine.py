@@ -10,31 +10,116 @@ class Engine:
         self.audit_log = []
 
     def run(self, df: Union[pd.DataFrame, pl.DataFrame]) -> Union[pd.DataFrame, pl.DataFrame]:
-        # 1. Если это Polars
+        self.audit_log = []
+
         if isinstance(df, pl.DataFrame):
-            print("🚀 Polars Engine Detected: Switching to Turbo Mode")
-            expressions = []
+            return self._run_polars(df)
+        if isinstance(df, pd.DataFrame):
+            return self._run_pandas(df)
+        raise ValueError("Unsupported DataFrame type. Use Pandas or Polars.")
 
-            for col, rule in self.schema.items():
-                if col in df.columns:
-                    try:
-                        # Собираем выражения для ленивого выполнения
-                        expressions.append(rule.apply_polars(col).alias(col))
-                        self.audit_log.append({"column": col, "rule": rule.name, "status": "Success (Polars)"})
-                    except Exception as e:
-                        print(f"Error in Polars rule for {col}: {e}")
+    def _run_pandas(self, df: pd.DataFrame) -> pd.DataFrame:
+        df_clean = df.copy()
 
-            # Выполняем всё разом (параллельно)
-            return df.with_columns(expressions)
+        for column, rule in self.schema.items():
+            if column not in df.columns:
+                self.audit_log.append(
+                    {
+                        "column": column,
+                        "rule": rule.name,
+                        "legal_basis": rule.legal_method,
+                        "status": "Missing column",
+                    }
+                )
+                continue
 
-        # 2. Если это Pandas (старый код)
-        elif isinstance(df, pd.DataFrame):
-            # ... (твой старый код для Pandas)
-            df_clean = df.copy()
-            for col, rule in self.schema.items():
-                # ...
-                df_clean[col] = rule.apply(df[col])
-            return df_clean
+            try:
+                df_clean[column] = rule.apply(df[column])
+                self.audit_log.append(
+                    {
+                        "column": column,
+                        "rule": rule.name,
+                        "legal_basis": rule.legal_method,
+                        "status": "Success",
+                    }
+                )
+            except Exception as exc:
+                self.audit_log.append(
+                    {
+                        "column": column,
+                        "rule": rule.name,
+                        "legal_basis": rule.legal_method,
+                        "status": f"Error: {exc}",
+                    }
+                )
 
+        return df_clean
+
+    def _run_polars(self, df: pl.DataFrame) -> pl.DataFrame:
+        expressions = []
+
+        for column, rule in self.schema.items():
+            if column not in df.columns:
+                self.audit_log.append(
+                    {
+                        "column": column,
+                        "rule": rule.name,
+                        "legal_basis": rule.legal_method,
+                        "status": "Missing column",
+                    }
+                )
+                continue
+
+            try:
+                expressions.append(rule.apply_polars(column).alias(column))
+                self.audit_log.append(
+                    {
+                        "column": column,
+                        "rule": rule.name,
+                        "legal_basis": rule.legal_method,
+                        "status": "Success",
+                    }
+                )
+            except Exception as exc:
+                self.audit_log.append(
+                    {
+                        "column": column,
+                        "rule": rule.name,
+                        "legal_basis": rule.legal_method,
+                        "status": f"Error: {exc}",
+                    }
+                )
+
+        if not expressions:
+            return df.clone()
+        return df.with_columns(expressions)
+
+    def generate_report(self) -> str:
+        report = ["COMPLIANCE AUDIT REPORT (Roskomnadzor Order No. 996)", "=" * 60]
+        methods_used = set()
+
+        if not self.audit_log:
+            report.append("No columns were processed.")
+
+        for entry in self.audit_log:
+            status = entry["status"]
+            if status == "Success":
+                report.append(
+                    f"[PASS] Column '{entry['column']}': Applied {entry['rule']}\n"
+                    f"       -> Compliance: {entry['legal_basis']}"
+                )
+                methods_used.add(entry["legal_basis"])
+            else:
+                report.append(f"[FAIL] Column '{entry['column']}': {status}")
+
+        report.append("-" * 60)
+        report.append("SUMMARY:")
+        report.append(f"Total Columns Processed: {len(self.audit_log)}")
+        report.append("Legal Methods Utilized:")
+        if methods_used:
+            for method in sorted(methods_used):
+                report.append(f" - {method}")
         else:
-            raise ValueError("Unsupported DataFrame type. Use Pandas or Polars.")
+            report.append(" - None")
+
+        return "\n".join(report)

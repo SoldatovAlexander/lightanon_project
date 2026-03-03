@@ -62,8 +62,11 @@ class CreditCardMask(BaseRule):
         self.legal_method = "Introduction of Identifiers (Method 1)"
 
     def _mask_cc(self, val):
+        if pd.isna(val):
+            return val
+
         s = str(val).replace(" ", "").replace("-", "")
-        if len(s) < 4:
+        if len(s) <= 4:
             return "*" * len(s)
         return "**** **** **** " + s[-4:]
 
