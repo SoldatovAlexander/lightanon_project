@@ -10,4 +10,10 @@ setup(
     ],
     author="Your Name",
     description="Lightweight data anonymization for ML compliance (152-FZ)",
+
+    entry_points={
+            'console_scripts': [
+                'lightanon=lightanon.cli:main',
+                ],
+              },
 )

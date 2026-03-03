@@ -1,68 +1,40 @@
 import pandas as pd
-from typing import Dict
+import polars as pl
+from typing import Dict, Union
 from .rules import BaseRule
 
 
 class Engine:
     def __init__(self, schema: Dict[str, BaseRule]):
-        """
-        schema: Словарь, где ключ - имя колонки, значение - экземпляр правила.
-        """
         self.schema = schema
         self.audit_log = []
 
-    def run(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Основной метод запуска пайплайна."""
-        df_clean = df.copy()
+    def run(self, df: Union[pd.DataFrame, pl.DataFrame]) -> Union[pd.DataFrame, pl.DataFrame]:
+        # 1. Если это Polars
+        if isinstance(df, pl.DataFrame):
+            print("🚀 Polars Engine Detected: Switching to Turbo Mode")
+            expressions = []
 
-        print(f"Starting anonymization on {len(df)} rows...")
+            for col, rule in self.schema.items():
+                if col in df.columns:
+                    try:
+                        # Собираем выражения для ленивого выполнения
+                        expressions.append(rule.apply_polars(col).alias(col))
+                        self.audit_log.append({"column": col, "rule": rule.name, "status": "Success (Polars)"})
+                    except Exception as e:
+                        print(f"Error in Polars rule for {col}: {e}")
 
-        for column, rule in self.schema.items():
-            if column not in df.columns:
-                print(f"Warning: Column '{column}' not found in DataFrame.")
-                continue
+            # Выполняем всё разом (параллельно)
+            return df.with_columns(expressions)
 
-            # Применяем правило
-            try:
-                original_sample = df[column].iloc[0] if len(df) > 0 else "N/A"
-                df_clean[column] = rule.apply(df[column])
+        # 2. Если это Pandas (старый код)
+        elif isinstance(df, pd.DataFrame):
+            # ... (твой старый код для Pandas)
+            df_clean = df.copy()
+            for col, rule in self.schema.items():
+                # ...
+                df_clean[col] = rule.apply(df[col])
+            return df_clean
 
-                # Логируем успех для аудита
-                self.audit_log.append({
-                    "column": column,
-                    "rule": rule.name,
-                    "legal_basis": rule.legal_method,
-                    "status": "Success"
-                })
-            except Exception as e:
-                self.audit_log.append({
-                    "column": column,
-                    "rule": rule.name,
-                    "status": f"Error: {str(e)}"
-                })
-
-        return df_clean
-
-    def generate_report(self) -> str:
-        """Генерация отчета для Compliance (152-ФЗ)."""
-        report = ["COMPLIANCE AUDIT REPORT (Roskomnadzor Order No. 996)", "=" * 60]
-
-        methods_used = set()
-
-        for entry in self.audit_log:
-            if entry["status"] == "Success":
-                line = f"[PASS] Column '{entry['column']}': Applied {entry['rule']}"
-                line += f"\n       -> Compliance: {entry['legal_basis']}"
-                report.append(line)
-                methods_used.add(entry['legal_basis'])
-            else:
-                report.append(f"[FAIL] Column '{entry['column']}': {entry['status']}")
-
-        report.append("-" * 60)
-        report.append("SUMMARY:")
-        report.append(f"Total Columns Processed: {len(self.audit_log)}")
-        report.append("Legal Methods Utilized:")
-        for m in methods_used:
-            report.append(f" - {m}")
-
-        return "\n".join(report)
+        else:
+            raise ValueError("Unsupported DataFrame type. Use Pandas or Polars.")

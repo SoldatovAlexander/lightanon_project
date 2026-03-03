@@ -1,0 +1,19 @@
+full_name:
+  method: Mask
+  params:
+    visible_chars: 2
+
+email:
+  method: Hash
+  params:
+    salt: "my_production_salt_2026"
+
+salary:
+  method: GaussianNoise
+  params:
+    std: 0.1
+
+age:
+  method: Generalize
+  params:
+    step: 5
