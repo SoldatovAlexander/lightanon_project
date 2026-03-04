@@ -14,7 +14,6 @@
 - Базовые правила: `Hash`, `Mask`, `GaussianNoise`, `Generalize`.
 - Финансовые правила: `MultiplicativeNoise`, `TopCoding`, `CreditCardMask`.
 - Генерация отчета о примененных методах обезличивания.
-
 ## Установка
 ```bash
 git clone https://github.com/SoldatovAlexander/lightanon_project.git
