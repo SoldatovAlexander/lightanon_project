@@ -1,5 +1,6 @@
 import numpy as np
 import pandas as pd
+from typing import Any
 from .rules import BaseRule
 
 
@@ -72,3 +73,20 @@ class CreditCardMask(BaseRule):
 
     def apply(self, series: pd.Series) -> pd.Series:
         return series.apply(self._mask_cc)
+
+class TopCodingFixed(BaseRule):
+    """
+    Ограничение значений фиксированным порогом (для Streaming).
+    В стриминге мы не знаем перцентилей заранее.
+    """
+    def __init__(self, cap_value: float):
+        super().__init__()
+        self.cap_value = cap_value
+        self.legal_method = "Change of Composition"
+
+    def apply_single(self, value: Any) -> Any:
+        if value is None or pd.isna(value):
+            return value
+        if value > self.cap_value:
+            return self.cap_value
+        return value

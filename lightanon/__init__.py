@@ -1,5 +1,5 @@
 from .engine import Engine
+from .stream import StreamEngine  # <-- Экспортируем новый движок
 from . import rules
 from . import financial
-
-__all__ = ["Engine", "rules", "financial"]
+from . import rag

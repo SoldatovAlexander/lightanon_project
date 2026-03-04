@@ -2,6 +2,12 @@
 
 Библиотека для обезличивания данных в ML-пайплайнах с поддержкой отчетности.
 
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
+![Engine](https://img.shields.io/badge/engine-Pandas%20%7C%20Polars-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Compliance](https://img.shields.io/badge/compliance-152--FZ-red)
+
+
 ## Возможности
 - Поддержка `pandas` и `polars`.
 - CLI с YAML-конфигом.
@@ -56,3 +62,12 @@ lightanon input.parquet output.csv -c schema.yaml --engine polars
 ```bash
 pytest -q
 ```
+
+## Документация
+- Главный индекс русской документации: `docs/ru/README.md`
+- Справочник API: `docs/ru/api.md`
+- Руководство по CLI: `docs/ru/cli.md`
+- Руководство по Streaming: `docs/ru/streaming.md`
+- Руководство по RAG: `docs/ru/rag.md`
+- Решение проблем: `docs/ru/troubleshooting.md`
+- English docs index: `docs/en/README.md`

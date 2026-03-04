@@ -2,6 +2,12 @@
 
 High-performance data anonymization for ML pipelines and compliance workflows.
 
+![Python](https://img.shields.io/badge/python-3.9%2B-blue)
+![Engine](https://img.shields.io/badge/engine-Pandas%20%7C%20Polars-orange)
+![License](https://img.shields.io/badge/license-MIT-green)
+![Compliance](https://img.shields.io/badge/compliance-152--FZ-red)
+
+
 ## Features
 - Pandas and Polars support.
 - YAML-driven CLI.
@@ -56,3 +62,12 @@ Supported I/O formats: `.csv`, `.parquet`.
 ```bash
 pytest -q
 ```
+
+## Documentation
+- Main English docs index: `docs/en/README.md`
+- API reference: `docs/en/api.md`
+- CLI guide: `docs/en/cli.md`
+- Streaming guide: `docs/en/streaming.md`
+- RAG guide: `docs/en/rag.md`
+- Troubleshooting: `docs/en/troubleshooting.md`
+- Russian docs index: `docs/ru/README.md`
