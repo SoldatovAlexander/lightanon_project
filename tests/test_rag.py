@@ -68,6 +68,46 @@ def test_custom_rule_has_priority_and_can_be_restored():
     assert sanitizer.deanonymize(clean) == "Договор 12-3456/78 подписан."
 
 
+def test_custom_rule_wins_over_overlapping_builtin_rule():
+    sanitizer = TextSanitizer()
+    sanitizer.add_rule("WORK_EMAIL", r"ivan@example\.com")
+
+    clean = sanitizer.sanitize("Email: ivan@example.com")
+
+    assert re.search(r"\[WORK_EMAIL_[a-f0-9]{8}\]", clean)
+    assert "[EMAIL_" not in clean
+
+
+def test_builtin_rules_can_be_selected():
+    sanitizer = TextSanitizer(enabled_rules=["EMAIL"])
+
+    clean = sanitizer.sanitize("Email ivan@example.com, phone +7 900 123-45-67.")
+
+    assert "ivan@example.com" not in clean
+    assert "+7 900 123-45-67" in clean
+    assert re.search(r"\[EMAIL_[a-f0-9]{8}\]", clean)
+
+
+def test_inn_is_opt_in_and_does_not_conflict_with_passport():
+    default_sanitizer = TextSanitizer()
+    default_clean = default_sanitizer.sanitize("ИНН 7707083893.")
+    assert default_clean == "ИНН 7707083893."
+
+    inn_sanitizer = TextSanitizer(enabled_rules=["INN"])
+    inn_clean = inn_sanitizer.sanitize("ИНН 7707083893.")
+    assert "7707083893" not in inn_clean
+    assert re.search(r"\[INN_[a-f0-9]{8}\]", inn_clean)
+
+    passport_clean = TextSanitizer().sanitize("Паспорт 4500 123456.")
+    assert "4500 123456" not in passport_clean
+    assert re.search(r"\[PASSPORT_[a-f0-9]{8}\]", passport_clean)
+
+
+def test_unknown_builtin_rule_fails_fast():
+    with pytest.raises(ValueError, match="Unknown built-in RAG rule"):
+        TextSanitizer(enabled_rules=["EMAIL", "UNKNOWN"])
+
+
 def test_unknown_token_is_left_unchanged():
     sanitizer = TextSanitizer()
 

@@ -33,7 +33,21 @@ Default `TextSanitizer` rules include:
 - card numbers,
 - broad RU full-name pattern.
 
+The built-in `INN` rule is also available, but disabled by default: bare 10/12 digit numbers can easily conflict with other document patterns without context. Enable it explicitly:
+
+```python
+sanitizer = TextSanitizer(enabled_rules=["EMAIL", "PHONE", "INN"])
+```
+
 The public `Patterns` class can be reused when configuring custom rules.
+
+For full control, pass an explicit rule list:
+
+```python
+from lightanon.rag import Patterns, TextSanitizer
+
+sanitizer = TextSanitizer(rules=[("EMAIL", Patterns.EMAIL)])
+```
 
 ## Custom Pattern
 
@@ -72,9 +86,11 @@ RAG commands work with plain text files and require `--vault` so restoration can
 
 ```bash
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag inspect-vault vault.json
 ```
 
 `sanitize` writes tokens to the vault. `restore` uses the same vault to replace tokens with original values.
 `inspect-vault` prints saved mapping counts and token-type distribution without revealing stored values.
+`--rules` enables only the listed built-in rules and is useful when you need to disable the broad name heuristic or explicitly enable `INN`.

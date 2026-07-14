@@ -94,16 +94,21 @@ Public exports:
 - `FileVault`
 - `Patterns`
 
-### `TextSanitizer(vault: Optional[BaseVault] = None)`
+### `TextSanitizer(vault: Optional[BaseVault] = None, enabled_rules=None, rules=None)`
 - uses `MemoryVault` by default,
 - stores `original value -> token` mappings,
 - reuses the same token for repeated values,
-- supports built-in regex patterns and custom rules.
+- supports built-in regex patterns and custom rules,
+- can enable only selected built-in rules with `enabled_rules`,
+- can accept an explicit rule list with `rules=[("EMAIL", Patterns.EMAIL), ...]`.
 
 Main methods:
 - `sanitize(text: str) -> str`
 - `deanonymize(text: str) -> str`
 - `add_rule(name: str, pattern: str)`
+
+Built-in rules: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`.
+`INN` is disabled by default so bare 10/12 digit numbers do not conflict with document patterns without context.
 
 Example:
 
@@ -137,6 +142,7 @@ Additional method:
 
 ### `Patterns`
 Built-in regex patterns for email, RU phones, RU passport numbers, SNILS, INN, card numbers, and a broad RU full-name heuristic.
+The passport pattern requires a separator before the 6-digit number, for example `4500 123456`, to avoid classifying a 10-digit INN as a passport.
 
 ## `polars` Compatibility Note
 

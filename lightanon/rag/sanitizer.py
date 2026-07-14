@@ -1,27 +1,57 @@
 import re
 import uuid
-from typing import List, Tuple, Optional
+from typing import Dict, Iterable, List, Optional, Tuple
 from .vault import BaseVault, MemoryVault
 from .patterns import Patterns
 
 
 class TextSanitizer:
-    def __init__(self, vault: Optional[BaseVault] = None):
+    AVAILABLE_RULES: Dict[str, str] = {
+        "EMAIL": Patterns.EMAIL,
+        "PHONE": Patterns.PHONE_RU,
+        "PASSPORT": Patterns.PASSPORT_RU,
+        "SNILS": Patterns.SNILS,
+        "INN": Patterns.INN,
+        "CARD": Patterns.CREDIT_CARD,
+        "PERSON": Patterns.NAME_RU_BROAD,
+    }
+    DEFAULT_RULE_NAMES: Tuple[str, ...] = (
+        "EMAIL",
+        "PHONE",
+        "PASSPORT",
+        "SNILS",
+        "CARD",
+        "PERSON",
+    )
+
+    def __init__(
+        self,
+        vault: Optional[BaseVault] = None,
+        enabled_rules: Optional[Iterable[str]] = None,
+        rules: Optional[List[Tuple[str, str]]] = None,
+    ):
         """
         Initialize the RAG Sanitizer.
         :param vault: Storage backend. Defaults to MemoryVault.
+        :param enabled_rules: Built-in rule names to enable. Defaults to DEFAULT_RULE_NAMES.
+        :param rules: Explicit rule list as (entity_type, regex pattern) tuples.
         """
         self.vault = vault if vault else MemoryVault()
 
         # Priority matters: Specific patterns first (Email), generic last (Names)
-        self.rules: List[Tuple[str, str]] = [
-            ("EMAIL", Patterns.EMAIL),
-            ("PHONE", Patterns.PHONE_RU),
-            ("PASSPORT", Patterns.PASSPORT_RU),
-            ("SNILS", Patterns.SNILS),
-            ("CARD", Patterns.CREDIT_CARD),
-            ("PERSON", Patterns.NAME_RU_BROAD),
-        ]
+        if rules is not None:
+            self.rules = [(self._normalize_entity_type(name), pattern) for name, pattern in rules]
+        else:
+            self.rules = self._build_rules(enabled_rules or self.DEFAULT_RULE_NAMES)
+
+    def _build_rules(self, enabled_rules: Iterable[str]) -> List[Tuple[str, str]]:
+        rules = []
+        for name in enabled_rules:
+            entity_type = self._normalize_entity_type(name)
+            if entity_type not in self.AVAILABLE_RULES:
+                raise ValueError(f"Unknown built-in RAG rule: {name}")
+            rules.append((entity_type, self.AVAILABLE_RULES[entity_type]))
+        return rules
 
     def add_rule(self, name: str, pattern: str):
         """Add a custom regex rule."""
@@ -52,22 +82,34 @@ class TextSanitizer:
         Input: "Call Ivan at +7999..."
         Output: "Call [PERSON_a1] at [PHONE_b2]..."
         """
-        sanitized_text = text
+        replacements = []
+        occupied_spans = []
 
         for entity_type, pattern in self.rules:
-            # Find all matches
-            matches = list(re.finditer(pattern, text))
-
-            for match in matches:
+            for match in re.finditer(pattern, text):
+                start, end = match.span()
+                if start == end or self._overlaps_existing_span(start, end, occupied_spans):
+                    continue
                 real_value = match.group()
                 token = self._get_or_create_token(entity_type, real_value)
+                replacements.append((start, end, token))
+                occupied_spans.append((start, end))
 
-                # Replace in text
-                # Note: This is a simple string replacement.
-                # For huge docs, consider single-pass replacement, but for RAG chunks this is fine.
-                sanitized_text = sanitized_text.replace(real_value, token)
+        if not replacements:
+            return text
 
-        return sanitized_text
+        sanitized_parts = []
+        current_pos = 0
+        for start, end, token in sorted(replacements):
+            sanitized_parts.append(text[current_pos:start])
+            sanitized_parts.append(token)
+            current_pos = end
+        sanitized_parts.append(text[current_pos:])
+
+        return "".join(sanitized_parts)
+
+    def _overlaps_existing_span(self, start: int, end: int, spans: List[Tuple[int, int]]) -> bool:
+        return any(start < existing_end and existing_start < end for existing_start, existing_end in spans)
 
     def deanonymize(self, text: str) -> str:
         """

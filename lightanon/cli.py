@@ -87,19 +87,26 @@ def _write_text(path: str, text: str, encoding: str) -> None:
     output_path.write_text(text, encoding=encoding)
 
 
+def _parse_rule_names(value: str):
+    return [item.strip() for item in value.split(",") if item.strip()]
+
+
 def _run_rag_cli(argv):
     parser = argparse.ArgumentParser(description="LightAnon RAG text sanitization")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    for command, help_text in (
-        ("sanitize", "Replace sensitive text with reversible tokens"),
-        ("restore", "Restore original values from reversible tokens"),
-    ):
-        subparser = subparsers.add_parser(command, help=help_text)
-        subparser.add_argument("input_file", help="Path to input text file")
-        subparser.add_argument("output_file", help="Path to output text file")
-        subparser.add_argument("--vault", required=True, help="Path to JSON token vault")
-        subparser.add_argument("--encoding", default="utf-8", help="Text encoding")
+    sanitize_parser = subparsers.add_parser("sanitize", help="Replace sensitive text with reversible tokens")
+    sanitize_parser.add_argument("input_file", help="Path to input text file")
+    sanitize_parser.add_argument("output_file", help="Path to output text file")
+    sanitize_parser.add_argument("--vault", required=True, help="Path to JSON token vault")
+    sanitize_parser.add_argument("--encoding", default="utf-8", help="Text encoding")
+    sanitize_parser.add_argument("--rules", help="Comma-separated built-in rules, for example EMAIL,PHONE,INN")
+
+    restore_parser = subparsers.add_parser("restore", help="Restore original values from reversible tokens")
+    restore_parser.add_argument("input_file", help="Path to input text file")
+    restore_parser.add_argument("output_file", help="Path to output text file")
+    restore_parser.add_argument("--vault", required=True, help="Path to JSON token vault")
+    restore_parser.add_argument("--encoding", default="utf-8", help="Text encoding")
 
     inspect_parser = subparsers.add_parser("inspect-vault", help="Print vault statistics without revealing values")
     inspect_parser.add_argument("vault_file", help="Path to JSON token vault")
@@ -120,13 +127,16 @@ def _run_rag_cli(argv):
             print("Types: none")
         return
 
-    vault = la.rag.FileVault(args.vault)
-    sanitizer = la.rag.TextSanitizer(vault=vault)
     text = _read_text(args.input_file, args.encoding)
 
     if args.command == "sanitize":
+        enabled_rules = _parse_rule_names(args.rules) if args.rules else None
+        vault = la.rag.FileVault(args.vault)
+        sanitizer = la.rag.TextSanitizer(vault=vault, enabled_rules=enabled_rules)
         result = sanitizer.sanitize(text)
     else:
+        vault = la.rag.FileVault(args.vault)
+        sanitizer = la.rag.TextSanitizer(vault=vault)
         result = sanitizer.deanonymize(text)
 
     _write_text(args.output_file, result, args.encoding)

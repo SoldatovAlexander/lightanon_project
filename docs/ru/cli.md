@@ -12,6 +12,7 @@ RAG-обезличивание текста:
 
 ```bash
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json>
+lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules EMAIL,PHONE,INN
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
 lightanon rag inspect-vault <vault.json>
 ```
@@ -29,6 +30,7 @@ lightanon rag inspect-vault <vault.json>
 - `restore`: восстановить исходные значения по токенам,
 - `inspect-vault`: показать статистику vault без раскрытия исходных значений,
 - `--vault`: JSON-файл с соответствиями токенов,
+- `--rules`: список встроенных правил для `sanitize`, разделенный запятыми,
 - `--encoding`: кодировка текстовых файлов, по умолчанию `utf-8`.
 
 ## Формат YAML
@@ -61,6 +63,7 @@ lightanon data/input.parquet data/output.csv -c schema.yaml --engine polars
 
 # RAG sanitize -> restore
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag inspect-vault vault.json
 ```
@@ -73,6 +76,7 @@ lightanon rag inspect-vault vault.json
 
 Для RAG CLI:
 - `sanitize` создает или дополняет `vault.json`,
+- `--rules` включает только указанные правила; доступные значения: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`,
 - повторный `sanitize` с тем же vault переиспользует уже созданные токены,
 - `restore` требует тот же vault, который использовался при `sanitize`,
 - поврежденный или неверно структурированный vault завершает команду ошибкой.

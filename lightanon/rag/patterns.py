@@ -14,9 +14,10 @@ class Patterns:
     PHONE_RU = r'(?:\+7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}'
 
     # --- DOCUMENTS (RUSSIA) ---
-    # Passport RF: Series (4 digits) + Number (6 digits)
+    # Passport RF: Series (4 digits) + Number (6 digits).
+    # Requires a separator before the 6-digit number to avoid matching 10-digit INN.
     # Ex: 45 00 123456, 4500 123456
-    PASSPORT_RU = r'\b\d{2}[\s\-]?\d{2}[\s\-]?\d{6}\b'
+    PASSPORT_RU = r'\b\d{2}[\s\-]?\d{2}[\s\-]+\d{6}\b'
 
     # SNILS: 11 digits, often 123-456-789 00
     SNILS = r'\b\d{3}[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{2}\b'
