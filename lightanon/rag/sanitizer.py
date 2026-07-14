@@ -25,7 +25,26 @@ class TextSanitizer:
 
     def add_rule(self, name: str, pattern: str):
         """Add a custom regex rule."""
-        self.rules.insert(0, (name, pattern))
+        self.rules.insert(0, (self._normalize_entity_type(name), pattern))
+
+    def _normalize_entity_type(self, name: str) -> str:
+        entity_type = re.sub(r"[^A-Z0-9_]", "_", name.upper()).strip("_")
+        if not entity_type:
+            raise ValueError("Rule name must contain at least one alphanumeric character")
+        return entity_type
+
+    def _make_token(self, entity_type: str) -> str:
+        uid = str(uuid.uuid4())[:8]
+        return f"[{entity_type}_{uid}]"
+
+    def _get_or_create_token(self, entity_type: str, real_value: str) -> str:
+        existing_token = self.vault.get_token(real_value)
+        if existing_token:
+            return existing_token
+
+        token = self._make_token(entity_type)
+        self.vault.save(token, real_value)
+        return token
 
     def sanitize(self, text: str) -> str:
         """
@@ -41,17 +60,7 @@ class TextSanitizer:
 
             for match in matches:
                 real_value = match.group()
-
-                # Check consistency: Have we seen this value before?
-                existing_token = self.vault.get_token(real_value)
-
-                if existing_token:
-                    token = existing_token
-                else:
-                    # Generate new token (short UUID to save context window)
-                    uid = str(uuid.uuid4())[:8]
-                    token = f"[{entity_type}_{uid}]"
-                    self.vault.save(token, real_value)
+                token = self._get_or_create_token(entity_type, real_value)
 
                 # Replace in text
                 # Note: This is a simple string replacement.
@@ -68,7 +77,7 @@ class TextSanitizer:
         """
         restored_text = text
         # Regex to find our tokens: [TYPE_hexcode]
-        token_pattern = r'\[[A-Z]+_[a-f0-9]{8}\]'
+        token_pattern = r'\[[A-Z][A-Z0-9_]*_[a-f0-9]{8}\]'
 
         matches = list(set(re.findall(token_pattern, text)))
 

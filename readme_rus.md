@@ -13,6 +13,7 @@
 - CLI с YAML-конфигом.
 - Базовые правила: `Hash`, `Mask`, `GaussianNoise`, `Generalize`.
 - Финансовые правила: `MultiplicativeNoise`, `TopCoding`, `CreditCardMask`.
+- Отдельный RAG-блок для обратимого обезличивания текста перед LLM.
 - Генерация отчета о примененных методах обезличивания.
 ## Установка
 ```bash

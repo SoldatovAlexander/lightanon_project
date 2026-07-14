@@ -13,6 +13,9 @@ Available at top level:
 - `la.financial`
 - `la.rag`
 
+`la.rules` and `la.financial` contain rules for `Engine`/`StreamEngine`.
+`la.rag` is a separate stateful block for reversible free-text sanitization before LLM/RAG calls.
+
 ## `Engine` (Batch Processing)
 
 Location: `lightanon.engine.Engine`
@@ -76,6 +79,54 @@ Interface methods:
 
 ### `TopCodingFixed(cap_value: float)`
 - fixed cap for stream/event mode.
+
+## RAG Text Sanitization (`lightanon.rag`)
+
+The RAG block is not a set of column-level `BaseRule` classes. It is a separate reversible pipeline for free text:
+1. `sanitize(text)` replaces sensitive values with tokens,
+2. the external LLM/RAG pipeline sees only tokens,
+3. `deanonymize(text)` restores original values in the final answer.
+
+Public exports:
+- `TextSanitizer`
+- `BaseVault`
+- `MemoryVault`
+- `Patterns`
+
+### `TextSanitizer(vault: Optional[BaseVault] = None)`
+- uses `MemoryVault` by default,
+- stores `original value -> token` mappings,
+- reuses the same token for repeated values,
+- supports built-in regex patterns and custom rules.
+
+Main methods:
+- `sanitize(text: str) -> str`
+- `deanonymize(text: str) -> str`
+- `add_rule(name: str, pattern: str)`
+
+Example:
+
+```python
+from lightanon.rag import TextSanitizer
+
+sanitizer = TextSanitizer()
+clean = sanitizer.sanitize("Ivan Ivanov, email ivan@example.com")
+answer = f"Contact: {clean}"
+restored = sanitizer.deanonymize(answer)
+```
+
+### `BaseVault`
+Abstract token-storage interface:
+- `get_value(token: str)`
+- `get_token(value: str)`
+- `save(token: str, value: str)`
+
+### `MemoryVault`
+In-memory `BaseVault` implementation.
+Useful for a single process/session, but does not persist data across restarts.
+
+### `Patterns`
+Built-in regex patterns for email, RU phones, RU passport numbers, SNILS, INN, card numbers, and a broad RU full-name heuristic.
 
 ## `polars` Compatibility Note
 

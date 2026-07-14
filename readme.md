@@ -13,6 +13,7 @@ High-performance data anonymization for ML pipelines and compliance workflows.
 - YAML-driven CLI.
 - Core rules: `Hash`, `Mask`, `GaussianNoise`, `Generalize`.
 - Financial rules: `MultiplicativeNoise`, `TopCoding`, `CreditCardMask`.
+- Separate RAG block for reversible text sanitization before LLM calls.
 - Compliance report generation from applied transformations.
 
 ## Installation

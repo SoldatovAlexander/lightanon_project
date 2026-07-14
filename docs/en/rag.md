@@ -4,6 +4,8 @@
 1. sanitize sensitive text before LLM call,
 2. de-anonymize model output for the end user.
 
+It is a separate stateful block, not an `Engine` rule: it stores mappings between original values and tokens in a `Vault`.
+
 ## Quick Example
 
 ```python
@@ -31,11 +33,15 @@ Default `TextSanitizer` rules include:
 - card numbers,
 - broad RU full-name pattern.
 
+The public `Patterns` class can be reused when configuring custom rules.
+
 ## Custom Pattern
 
 ```python
 sanitizer.add_rule("CONTRACT", r"\b\d{2}-\d{4}/\d{2}\b")
 ```
+
+Custom rules are inserted with higher priority than built-in rules.
 
 ## Vault
 Default backend: `MemoryVault`.
@@ -44,3 +50,8 @@ Default backend: `MemoryVault`.
 - not persistent across restarts.
 
 For production, implement your own `BaseVault` backend.
+
+Minimum `BaseVault` interface:
+- `get_value(token: str)`,
+- `get_token(value: str)`,
+- `save(token: str, value: str)`.

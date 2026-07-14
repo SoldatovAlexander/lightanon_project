@@ -13,6 +13,9 @@ import lightanon as la
 - `la.financial`
 - `la.rag`
 
+`la.rules` и `la.financial` содержат правила для `Engine`/`StreamEngine`.
+`la.rag` — отдельный stateful-блок для обратимого обезличивания свободного текста перед LLM/RAG.
+
 ## `Engine` (пакетная обработка)
 
 Расположение: `lightanon.engine.Engine`
@@ -76,6 +79,54 @@ import lightanon as la
 
 ### `TopCodingFixed(cap_value: float)`
 - фиксированный предел для streaming-сценариев.
+
+## RAG text sanitization (`lightanon.rag`)
+
+RAG-блок не является набором `BaseRule` для колонок. Это отдельный обратимый пайплайн для свободного текста:
+1. `sanitize(text)` заменяет чувствительные значения на токены,
+2. внешний LLM/RAG-пайплайн работает только с токенами,
+3. `deanonymize(text)` восстанавливает исходные значения в финальном ответе.
+
+Публичные экспорты:
+- `TextSanitizer`
+- `BaseVault`
+- `MemoryVault`
+- `Patterns`
+
+### `TextSanitizer(vault: Optional[BaseVault] = None)`
+- использует `MemoryVault` по умолчанию,
+- сохраняет соответствие `исходное значение -> токен`,
+- переиспользует один и тот же токен для повторяющегося значения,
+- поддерживает встроенные regex-паттерны и пользовательские правила.
+
+Основные методы:
+- `sanitize(text: str) -> str`
+- `deanonymize(text: str) -> str`
+- `add_rule(name: str, pattern: str)`
+
+Пример:
+
+```python
+from lightanon.rag import TextSanitizer
+
+sanitizer = TextSanitizer()
+clean = sanitizer.sanitize("Иванов Иван, email ivan@example.com")
+answer = f"Контакт: {clean}"
+restored = sanitizer.deanonymize(answer)
+```
+
+### `BaseVault`
+Абстрактный интерфейс хранилища токенов:
+- `get_value(token: str)`
+- `get_token(value: str)`
+- `save(token: str, value: str)`
+
+### `MemoryVault`
+In-memory реализация `BaseVault`.
+Подходит для одного процесса/сессии, но не сохраняет данные между перезапусками.
+
+### `Patterns`
+Набор встроенных regex-паттернов для email, телефонов РФ, паспорта РФ, СНИЛС, ИНН, карт и эвристики ФИО.
 
 ## Замечание по `polars`
 
