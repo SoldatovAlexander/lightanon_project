@@ -2,15 +2,32 @@
 
 ## Command
 
+Batch CSV/Parquet processing:
+
 ```bash
 lightanon <input_file> <output_file> -c <schema.yaml> [--engine pandas|polars]
 ```
 
+RAG text sanitization:
+
+```bash
+lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json>
+lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
+```
+
 ## Parameters
+
+### CSV/Parquet
 - `input_file`: `.csv` or `.parquet`
 - `output_file`: `.csv` or `.parquet`
 - `--config`, `-c`: YAML schema path
 - `--engine`: `pandas` (default) or `polars`
+
+### RAG
+- `sanitize`: replace sensitive values with reversible tokens,
+- `restore`: restore original values from tokens,
+- `--vault`: JSON token-mapping file,
+- `--encoding`: text-file encoding, defaults to `utf-8`.
 
 ## YAML Schema Format
 
@@ -39,6 +56,10 @@ lightanon data/input.csv data/output.parquet -c schema.yaml --engine pandas
 
 # Parquet -> CSV (polars)
 lightanon data/input.parquet data/output.csv -c schema.yaml --engine polars
+
+# RAG sanitize -> restore
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
+lightanon rag restore llm_response.txt restored.txt --vault vault.json
 ```
 
 ## Runtime Behavior

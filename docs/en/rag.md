@@ -55,3 +55,22 @@ Minimum `BaseVault` interface:
 - `get_value(token: str)`,
 - `get_token(value: str)`,
 - `save(token: str, value: str)`.
+
+`FileVault` stores mappings in a JSON file and is useful for local CLI workflows:
+
+```python
+from lightanon.rag import FileVault, TextSanitizer
+
+sanitizer = TextSanitizer(vault=FileVault("vault.json"))
+```
+
+## CLI
+
+RAG commands work with plain text files and require `--vault` so restoration can happen in a separate run:
+
+```bash
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json
+lightanon rag restore llm_response.txt restored.txt --vault vault.json
+```
+
+`sanitize` writes tokens to the vault. `restore` uses the same vault to replace tokens with original values.

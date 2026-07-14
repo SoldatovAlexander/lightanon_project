@@ -1,12 +1,13 @@
 import re
 
-from lightanon.rag import BaseVault, MemoryVault, Patterns, TextSanitizer
+from lightanon.rag import BaseVault, FileVault, MemoryVault, Patterns, TextSanitizer
 
 
 def test_rag_public_api_exports():
     assert TextSanitizer
     assert Patterns
     assert MemoryVault
+    assert FileVault
     assert BaseVault
 
 
@@ -68,3 +69,14 @@ def test_unknown_token_is_left_unchanged():
     sanitizer = TextSanitizer()
 
     assert sanitizer.deanonymize("Hello [EMAIL_aaaaaaaa]") == "Hello [EMAIL_aaaaaaaa]"
+
+
+def test_file_vault_persists_mappings(tmp_path):
+    vault_path = tmp_path / "vault.json"
+    vault = FileVault(str(vault_path))
+    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+
+    restored_vault = FileVault(str(vault_path))
+
+    assert restored_vault.get_value("[EMAIL_aaaaaaaa]") == "ivan@example.com"
+    assert restored_vault.get_token("ivan@example.com") == "[EMAIL_aaaaaaaa]"

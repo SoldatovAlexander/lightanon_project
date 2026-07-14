@@ -91,6 +91,7 @@ Public exports:
 - `TextSanitizer`
 - `BaseVault`
 - `MemoryVault`
+- `FileVault`
 - `Patterns`
 
 ### `TextSanitizer(vault: Optional[BaseVault] = None)`
@@ -124,6 +125,10 @@ Abstract token-storage interface:
 ### `MemoryVault`
 In-memory `BaseVault` implementation.
 Useful for a single process/session, but does not persist data across restarts.
+
+### `FileVault(path: str)`
+JSON-backed `BaseVault` implementation for CLI and local RAG workflows.
+Persists tokens to disk, so `sanitize` and `restore` can run in different processes.
 
 ### `Patterns`
 Built-in regex patterns for email, RU phones, RU passport numbers, SNILS, INN, card numbers, and a broad RU full-name heuristic.

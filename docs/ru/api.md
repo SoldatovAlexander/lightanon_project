@@ -91,6 +91,7 @@ RAG-блок не является набором `BaseRule` для колоно
 - `TextSanitizer`
 - `BaseVault`
 - `MemoryVault`
+- `FileVault`
 - `Patterns`
 
 ### `TextSanitizer(vault: Optional[BaseVault] = None)`
@@ -124,6 +125,10 @@ restored = sanitizer.deanonymize(answer)
 ### `MemoryVault`
 In-memory реализация `BaseVault`.
 Подходит для одного процесса/сессии, но не сохраняет данные между перезапусками.
+
+### `FileVault(path: str)`
+JSON-backed реализация `BaseVault` для CLI и локальных RAG-сценариев.
+Сохраняет токены на диск, поэтому `sanitize` и `restore` могут выполняться разными процессами.
 
 ### `Patterns`
 Набор встроенных regex-паттернов для email, телефонов РФ, паспорта РФ, СНИЛС, ИНН, карт и эвристики ФИО.

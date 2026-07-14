@@ -55,3 +55,22 @@ sanitizer.add_rule("CONTRACT", r"\b\d{2}-\d{4}/\d{2}\b")
 - `get_value(token: str)`,
 - `get_token(value: str)`,
 - `save(token: str, value: str)`.
+
+`FileVault` сохраняет соответствия в JSON-файл и подходит для локального CLI:
+
+```python
+from lightanon.rag import FileVault, TextSanitizer
+
+sanitizer = TextSanitizer(vault=FileVault("vault.json"))
+```
+
+## CLI
+
+RAG-команды работают с обычными текстовыми файлами и требуют `--vault`, чтобы восстановление можно было выполнить отдельным запуском:
+
+```bash
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json
+lightanon rag restore llm_response.txt restored.txt --vault vault.json
+```
+
+`sanitize` записывает токены в vault. `restore` использует тот же vault для замены токенов исходными значениями.

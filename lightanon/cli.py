@@ -1,4 +1,5 @@
 import argparse
+import sys
 from pathlib import Path
 
 import yaml
@@ -76,14 +77,57 @@ def _write_dataframe(df, path: str, engine_name: str):
     raise ValueError(f"Unsupported output format '{ext}'. Use .csv or .parquet")
 
 
-def main():
+def _read_text(path: str, encoding: str) -> str:
+    return Path(path).read_text(encoding=encoding)
+
+
+def _write_text(path: str, text: str, encoding: str) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    output_path.write_text(text, encoding=encoding)
+
+
+def _run_rag_cli(argv):
+    parser = argparse.ArgumentParser(description="LightAnon RAG text sanitization")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    for command, help_text in (
+        ("sanitize", "Replace sensitive text with reversible tokens"),
+        ("restore", "Restore original values from reversible tokens"),
+    ):
+        subparser = subparsers.add_parser(command, help=help_text)
+        subparser.add_argument("input_file", help="Path to input text file")
+        subparser.add_argument("output_file", help="Path to output text file")
+        subparser.add_argument("--vault", required=True, help="Path to JSON token vault")
+        subparser.add_argument("--encoding", default="utf-8", help="Text encoding")
+
+    args = parser.parse_args(argv)
+
+    vault = la.rag.FileVault(args.vault)
+    sanitizer = la.rag.TextSanitizer(vault=vault)
+    text = _read_text(args.input_file, args.encoding)
+
+    if args.command == "sanitize":
+        result = sanitizer.sanitize(text)
+    else:
+        result = sanitizer.deanonymize(text)
+
+    _write_text(args.output_file, result, args.encoding)
+    print(f"Saved to {args.output_file}")
+
+
+def main(argv=None):
+    argv = sys.argv[1:] if argv is None else list(argv)
+    if argv and argv[0] == "rag":
+        return _run_rag_cli(argv[1:])
+
     parser = argparse.ArgumentParser(description="LightAnon CLI Tool")
     parser.add_argument("input_file", help="Path to input CSV/Parquet")
     parser.add_argument("output_file", help="Path to output file")
     parser.add_argument("--config", "-c", required=True, help="Path to YAML config schema")
     parser.add_argument("--engine", choices=["pandas", "polars"], default="pandas", help="Processing engine")
 
-    args = parser.parse_args()
+    args = parser.parse_args(argv)
 
     print(f"Loading schema from {args.config}...")
     schema = load_schema(args.config)
