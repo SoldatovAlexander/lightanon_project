@@ -129,6 +129,11 @@ Useful for a single process/session, but does not persist data across restarts.
 ### `FileVault(path: str)`
 JSON-backed `BaseVault` implementation for CLI and local RAG workflows.
 Persists tokens to disk, so `sanitize` and `restore` can run in different processes.
+Writes use a temporary file followed by atomic replacement.
+Invalid JSON or invalid vault structure raises `ValueError`.
+
+Additional method:
+- `stats() -> Dict[str, object]`: returns path, total mappings, and token-type counters without original values.
 
 ### `Patterns`
 Built-in regex patterns for email, RU phones, RU passport numbers, SNILS, INN, card numbers, and a broad RU full-name heuristic.

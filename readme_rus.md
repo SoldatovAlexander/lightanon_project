@@ -56,6 +56,7 @@ lightanon input.csv output.parquet -c schema.yaml --engine pandas
 lightanon input.parquet output.csv -c schema.yaml --engine polars
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
+lightanon rag inspect-vault vault.json
 ```
 
 Поддерживаемые форматы входа/выхода: `.csv`, `.parquet`.

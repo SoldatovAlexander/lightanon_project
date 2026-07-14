@@ -64,6 +64,8 @@ from lightanon.rag import FileVault, TextSanitizer
 sanitizer = TextSanitizer(vault=FileVault("vault.json"))
 ```
 
+`FileVault` validates JSON structure on read and writes changes through a temporary file followed by atomic replacement. `stats()` returns counters only, without original values.
+
 ## CLI
 
 RAG commands work with plain text files and require `--vault` so restoration can happen in a separate run:
@@ -71,6 +73,8 @@ RAG commands work with plain text files and require `--vault` so restoration can
 ```bash
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
+lightanon rag inspect-vault vault.json
 ```
 
 `sanitize` writes tokens to the vault. `restore` uses the same vault to replace tokens with original values.
+`inspect-vault` prints saved mapping counts and token-type distribution without revealing stored values.

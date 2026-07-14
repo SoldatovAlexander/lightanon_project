@@ -13,6 +13,7 @@ RAG-обезличивание текста:
 ```bash
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json>
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
+lightanon rag inspect-vault <vault.json>
 ```
 
 ## Параметры
@@ -26,6 +27,7 @@ lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
 ### RAG
 - `sanitize`: заменить чувствительные данные на обратимые токены,
 - `restore`: восстановить исходные значения по токенам,
+- `inspect-vault`: показать статистику vault без раскрытия исходных значений,
 - `--vault`: JSON-файл с соответствиями токенов,
 - `--encoding`: кодировка текстовых файлов, по умолчанию `utf-8`.
 
@@ -60,6 +62,7 @@ lightanon data/input.parquet data/output.csv -c schema.yaml --engine polars
 # RAG sanitize -> restore
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
+lightanon rag inspect-vault vault.json
 ```
 
 ## Поведение во время выполнения
@@ -67,3 +70,9 @@ lightanon rag restore llm_response.txt restored.txt --vault vault.json
 - некорректный элемент YAML: пропускается с warning,
 - пустая схема: вход копируется в выход,
 - в конце печатается отчет.
+
+Для RAG CLI:
+- `sanitize` создает или дополняет `vault.json`,
+- повторный `sanitize` с тем же vault переиспользует уже созданные токены,
+- `restore` требует тот же vault, который использовался при `sanitize`,
+- поврежденный или неверно структурированный vault завершает команду ошибкой.

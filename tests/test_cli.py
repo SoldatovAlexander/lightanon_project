@@ -38,3 +38,29 @@ def test_rag_cli_sanitize_and_restore(tmp_path):
     )
 
     assert restored_path.read_text(encoding="utf-8") == original
+
+
+def test_rag_cli_inspect_vault_hides_values(tmp_path, capsys):
+    input_path = tmp_path / "input.txt"
+    sanitized_path = tmp_path / "sanitized.txt"
+    vault_path = tmp_path / "vault.json"
+    input_path.write_text("Email: ivan@example.com", encoding="utf-8")
+
+    cli.main(
+        [
+            "rag",
+            "sanitize",
+            str(input_path),
+            str(sanitized_path),
+            "--vault",
+            str(vault_path),
+        ]
+    )
+    capsys.readouterr()
+
+    cli.main(["rag", "inspect-vault", str(vault_path)])
+
+    output = capsys.readouterr().out
+    assert "Total mappings: 1" in output
+    assert "EMAIL: 1" in output
+    assert "ivan@example.com" not in output

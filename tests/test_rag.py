@@ -1,4 +1,7 @@
+import json
 import re
+
+import pytest
 
 from lightanon.rag import BaseVault, FileVault, MemoryVault, Patterns, TextSanitizer
 
@@ -80,3 +83,47 @@ def test_file_vault_persists_mappings(tmp_path):
 
     assert restored_vault.get_value("[EMAIL_aaaaaaaa]") == "ivan@example.com"
     assert restored_vault.get_token("ivan@example.com") == "[EMAIL_aaaaaaaa]"
+
+
+def test_file_vault_reuses_token_across_sanitizer_instances(tmp_path):
+    vault_path = tmp_path / "vault.json"
+
+    first = TextSanitizer(vault=FileVault(str(vault_path))).sanitize("Email: ivan@example.com")
+    second = TextSanitizer(vault=FileVault(str(vault_path))).sanitize("Repeat: ivan@example.com")
+
+    first_token = re.search(r"\[EMAIL_[a-f0-9]{8}\]", first).group()
+    second_token = re.search(r"\[EMAIL_[a-f0-9]{8}\]", second).group()
+    assert first_token == second_token
+
+
+def test_file_vault_rebuilds_reverse_mapping(tmp_path):
+    vault_path = tmp_path / "vault.json"
+    vault_path.write_text(
+        json.dumps({"token_to_value": {"[EMAIL_aaaaaaaa]": "ivan@example.com"}}),
+        encoding="utf-8",
+    )
+
+    vault = FileVault(str(vault_path))
+
+    assert vault.get_token("ivan@example.com") == "[EMAIL_aaaaaaaa]"
+
+
+def test_file_vault_rejects_invalid_json(tmp_path):
+    vault_path = tmp_path / "vault.json"
+    vault_path.write_text("{bad json", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Invalid vault JSON"):
+        FileVault(str(vault_path))
+
+
+def test_file_vault_stats_do_not_include_values(tmp_path):
+    vault_path = tmp_path / "vault.json"
+    vault = FileVault(str(vault_path))
+    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+    vault.save("[CONTRACT_ID_bbbbbbbb]", "12-3456/78")
+
+    stats = vault.stats()
+
+    assert stats["total"] == 2
+    assert stats["by_type"] == {"EMAIL": 1, "CONTRACT_ID": 1}
+    assert "ivan@example.com" not in str(stats)

@@ -101,7 +101,24 @@ def _run_rag_cli(argv):
         subparser.add_argument("--vault", required=True, help="Path to JSON token vault")
         subparser.add_argument("--encoding", default="utf-8", help="Text encoding")
 
+    inspect_parser = subparsers.add_parser("inspect-vault", help="Print vault statistics without revealing values")
+    inspect_parser.add_argument("vault_file", help="Path to JSON token vault")
+
     args = parser.parse_args(argv)
+
+    if args.command == "inspect-vault":
+        vault = la.rag.FileVault(args.vault_file)
+        stats = vault.stats()
+        print(f"Vault: {stats['path']}")
+        print(f"Total mappings: {stats['total']}")
+        by_type = stats["by_type"]
+        if by_type:
+            print("Types:")
+            for entity_type, count in sorted(by_type.items()):
+                print(f" - {entity_type}: {count}")
+        else:
+            print("Types: none")
+        return
 
     vault = la.rag.FileVault(args.vault)
     sanitizer = la.rag.TextSanitizer(vault=vault)
