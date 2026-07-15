@@ -7,6 +7,11 @@ High-performance data anonymization for ML pipelines and compliance workflows.
 ![License](https://img.shields.io/badge/license-MIT-green)
 ![Compliance](https://img.shields.io/badge/compliance-152--FZ-red)
 
+## Project Description / Описание проекта
+
+**EN:** LightAnon is a lightweight Python library for anonymizing structured and text data in ML, analytics, and compliance workflows. It provides batch processing for `pandas` and `polars`, streaming/event anonymization, domain-specific financial rules, and a reversible RAG text-sanitization block that replaces sensitive values with tokens before sending text to LLM systems.
+
+**RU:** LightAnon — легковесная Python-библиотека для обезличивания структурированных и текстовых данных в ML-, аналитических и compliance-пайплайнах. Проект поддерживает пакетную обработку через `pandas` и `polars`, потоковую анонимизацию событий, отдельные финансовые правила и обратимый RAG-блок, который заменяет чувствительные данные токенами перед отправкой текста в LLM-системы.
 
 ## Features
 - Pandas and Polars support.
