@@ -94,13 +94,14 @@ Public exports:
 - `FileVault`
 - `Patterns`
 
-### `TextSanitizer(vault: Optional[BaseVault] = None, enabled_rules=None, rules=None)`
+### `TextSanitizer(vault: Optional[BaseVault] = None, enabled_rules=None, rules=None, profile="basic")`
 - uses `MemoryVault` by default,
 - stores `original value -> token` mappings,
 - reuses the same token for repeated values,
 - supports built-in regex patterns and custom rules,
 - can enable only selected built-in rules with `enabled_rules`,
-- can accept an explicit rule list with `rules=[("EMAIL", Patterns.EMAIL), ...]`.
+- can accept an explicit rule list with `rules=[("EMAIL", Patterns.EMAIL), ...]`,
+- supports rule profiles: `basic`, `ru_152`, `ru_152_strict`.
 
 Main methods:
 - `sanitize(text: str) -> str`
@@ -110,6 +111,7 @@ Main methods:
 Built-in rules: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`.
 `INN` is disabled by default so bare 10/12 digit numbers do not conflict with document patterns without context.
 `ONLINE_ACCOUNT` targets combined online identifiers such as `nickname ivan_dev on Habr` or `Telegram: @ivanov` and tokenizes the pair as one entity.
+Configuration priority: `rules` > `enabled_rules` > `profile`.
 
 Example:
 

@@ -94,13 +94,14 @@ RAG-блок не является набором `BaseRule` для колоно
 - `FileVault`
 - `Patterns`
 
-### `TextSanitizer(vault: Optional[BaseVault] = None, enabled_rules=None, rules=None)`
+### `TextSanitizer(vault: Optional[BaseVault] = None, enabled_rules=None, rules=None, profile="basic")`
 - использует `MemoryVault` по умолчанию,
 - сохраняет соответствие `исходное значение -> токен`,
 - переиспользует один и тот же токен для повторяющегося значения,
 - поддерживает встроенные regex-паттерны и пользовательские правила,
 - умеет включать только выбранные встроенные правила через `enabled_rules`,
-- может принять явный список правил через `rules=[("EMAIL", Patterns.EMAIL), ...]`.
+- может принять явный список правил через `rules=[("EMAIL", Patterns.EMAIL), ...]`,
+- поддерживает профили правил: `basic`, `ru_152`, `ru_152_strict`.
 
 Основные методы:
 - `sanitize(text: str) -> str`
@@ -110,6 +111,7 @@ RAG-блок не является набором `BaseRule` для колоно
 Встроенные правила: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`.
 По умолчанию `INN` выключен, чтобы голые 10/12 цифр не конфликтовали с документами без контекста.
 Правило `ONLINE_ACCOUNT` предназначено для составных интернет-идентификаторов, например `никнейм ivan_dev на Habr` или `Telegram: @ivanov`, и токенизирует такую связку целиком.
+Приоритет настройки: `rules` > `enabled_rules` > `profile`.
 
 Пример:
 

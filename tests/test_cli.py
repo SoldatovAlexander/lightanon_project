@@ -94,3 +94,58 @@ def test_rag_cli_sanitize_with_selected_rules(tmp_path):
     assert "+7 900 123-45-67" in sanitized
     assert "[EMAIL_" in sanitized
     assert "[INN_" in sanitized
+
+
+def test_rag_cli_sanitize_with_ru_152_profile(tmp_path):
+    input_path = tmp_path / "input.txt"
+    sanitized_path = tmp_path / "sanitized.txt"
+    vault_path = tmp_path / "vault.json"
+    input_path.write_text("ИНН 7707083893, Telegram: @ivanov_dev.", encoding="utf-8")
+
+    cli.main(
+        [
+            "rag",
+            "sanitize",
+            str(input_path),
+            str(sanitized_path),
+            "--vault",
+            str(vault_path),
+            "--profile",
+            "ru_152",
+        ]
+    )
+
+    sanitized = sanitized_path.read_text(encoding="utf-8")
+    assert "7707083893" not in sanitized
+    assert "Telegram" not in sanitized
+    assert "@ivanov_dev" not in sanitized
+    assert "[INN_" in sanitized
+    assert "[ONLINE_ACCOUNT_" in sanitized
+
+
+def test_rag_cli_rules_override_profile(tmp_path):
+    input_path = tmp_path / "input.txt"
+    sanitized_path = tmp_path / "sanitized.txt"
+    vault_path = tmp_path / "vault.json"
+    input_path.write_text("Email: ivan@example.com. ИНН 7707083893.", encoding="utf-8")
+
+    cli.main(
+        [
+            "rag",
+            "sanitize",
+            str(input_path),
+            str(sanitized_path),
+            "--vault",
+            str(vault_path),
+            "--profile",
+            "ru_152",
+            "--rules",
+            "EMAIL",
+        ]
+    )
+
+    sanitized = sanitized_path.read_text(encoding="utf-8")
+    assert "ivan@example.com" not in sanitized
+    assert "7707083893" in sanitized
+    assert "[EMAIL_" in sanitized
+    assert "[INN_" not in sanitized

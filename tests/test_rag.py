@@ -147,6 +147,61 @@ def test_online_identifier_rules_do_not_break_email_detection():
     assert re.search(r"\[SOCIAL_HANDLE_[a-f0-9]{8}\]", clean)
 
 
+def test_basic_profile_keeps_previous_default_rules():
+    sanitizer = TextSanitizer(profile="basic")
+
+    clean = sanitizer.sanitize("Email ivan@example.com, ИНН 7707083893, Telegram: @ivanov_dev.")
+
+    assert "ivan@example.com" not in clean
+    assert "7707083893" in clean
+    assert "Telegram: @ivanov_dev" in clean
+    assert re.search(r"\[EMAIL_[a-f0-9]{8}\]", clean)
+
+
+def test_ru_152_profile_includes_inn_and_online_identifiers():
+    sanitizer = TextSanitizer(profile="ru_152")
+
+    clean = sanitizer.sanitize("ИНН 7707083893, никнейм ivan_dev на Habr.")
+
+    assert "7707083893" not in clean
+    assert "ivan_dev" not in clean
+    assert "Habr" not in clean
+    assert re.search(r"\[INN_[a-f0-9]{8}\]", clean)
+    assert re.search(r"\[ONLINE_ACCOUNT_[a-f0-9]{8}\]", clean)
+
+
+def test_ru_152_strict_profile_includes_technical_identifiers():
+    sanitizer = TextSanitizer(profile="ru_152_strict")
+
+    clean = sanitizer.sanitize(
+        "IP 192.168.1.10, session_id=abc123456, device_id: dev-12345678, user_id: 123456."
+    )
+
+    assert "192.168.1.10" not in clean
+    assert "session_id=abc123456" not in clean
+    assert "device_id: dev-12345678" not in clean
+    assert "user_id: 123456" not in clean
+    assert re.search(r"\[IP_ADDRESS_[a-f0-9]{8}\]", clean)
+    assert re.search(r"\[COOKIE_ID_[a-f0-9]{8}\]", clean)
+    assert re.search(r"\[DEVICE_ID_[a-f0-9]{8}\]", clean)
+    assert re.search(r"\[USER_ID_[a-f0-9]{8}\]", clean)
+
+
+def test_enabled_rules_override_profile():
+    sanitizer = TextSanitizer(profile="ru_152_strict", enabled_rules=["EMAIL"])
+
+    clean = sanitizer.sanitize("Email ivan@example.com, IP 192.168.1.10.")
+
+    assert "ivan@example.com" not in clean
+    assert "192.168.1.10" in clean
+    assert re.search(r"\[EMAIL_[a-f0-9]{8}\]", clean)
+
+
+def test_unknown_profile_fails_fast():
+    with pytest.raises(ValueError, match="Unknown RAG profile"):
+        TextSanitizer(profile="unknown")
+
+
 def test_unknown_builtin_rule_fails_fast():
     with pytest.raises(ValueError, match="Unknown built-in RAG rule"):
         TextSanitizer(enabled_rules=["EMAIL", "UNKNOWN"])

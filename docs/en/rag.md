@@ -33,6 +33,17 @@ Default `TextSanitizer` rules include:
 - card numbers,
 - broad RU full-name pattern.
 
+Rule profiles:
+- `basic`: current default baseline;
+- `ru_152`: `basic` + `INN` + online identifiers;
+- `ru_152_strict`: `ru_152` + IP addresses, cookie/session IDs, device/client IDs, and user IDs.
+
+```python
+sanitizer = TextSanitizer(profile="ru_152")
+```
+
+Configuration priority: `rules` > `enabled_rules` > `profile`.
+
 The built-in `INN` rule is also available, but disabled by default: bare 10/12 digit numbers can easily conflict with other document patterns without context. Enable it explicitly:
 
 ```python
@@ -94,6 +105,7 @@ RAG commands work with plain text files and require `--vault` so restoration can
 
 ```bash
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json --profile ru_152
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
@@ -102,4 +114,5 @@ lightanon rag inspect-vault vault.json
 
 `sanitize` writes tokens to the vault. `restore` uses the same vault to replace tokens with original values.
 `inspect-vault` prints saved mapping counts and token-type distribution without revealing stored values.
+`--profile` enables a built-in rule profile. Available profiles: `basic`, `ru_152`, `ru_152_strict`.
 `--rules` enables only the listed built-in rules and is useful when you need to disable the broad name heuristic, explicitly enable `INN`, or process online identifiers.

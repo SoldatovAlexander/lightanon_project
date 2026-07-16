@@ -12,6 +12,7 @@ RAG text sanitization:
 
 ```bash
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json>
+lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --profile ru_152
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules EMAIL,PHONE,INN
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
@@ -31,6 +32,7 @@ lightanon rag inspect-vault <vault.json>
 - `restore`: restore original values from tokens,
 - `inspect-vault`: print vault statistics without revealing original values,
 - `--vault`: JSON token-mapping file,
+- `--profile`: rule profile for `sanitize`: `basic`, `ru_152`, `ru_152_strict`,
 - `--rules`: comma-separated built-in rule list for `sanitize`,
 - `--encoding`: text-file encoding, defaults to `utf-8`.
 
@@ -64,6 +66,7 @@ lightanon data/input.parquet data/output.csv -c schema.yaml --engine polars
 
 # RAG sanitize -> restore
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
@@ -78,6 +81,7 @@ lightanon rag inspect-vault vault.json
 
 For RAG CLI:
 - `sanitize` creates or updates `vault.json`,
+- `--profile` selects a built-in rule set; `--rules` has higher priority,
 - `--rules` enables only the listed rules; available values: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`,
 - repeated `sanitize` with the same vault reuses existing tokens,
 - `restore` requires the same vault used during `sanitize`,

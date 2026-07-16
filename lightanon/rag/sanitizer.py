@@ -17,6 +17,10 @@ class TextSanitizer:
         "PROFILE_URL": Patterns.PROFILE_URL,
         "SOCIAL_HANDLE": Patterns.SOCIAL_HANDLE,
         "USERNAME": Patterns.USERNAME,
+        "IP_ADDRESS": Patterns.IP_ADDRESS,
+        "COOKIE_ID": Patterns.COOKIE_ID,
+        "DEVICE_ID": Patterns.DEVICE_ID,
+        "USER_ID": Patterns.USER_ID,
         "EMAIL": Patterns.EMAIL,
         "PHONE": Patterns.PHONE_RU,
         "PASSPORT": Patterns.PASSPORT_RU,
@@ -33,18 +37,53 @@ class TextSanitizer:
         "CARD",
         "PERSON",
     )
+    PROFILES: Dict[str, Tuple[str, ...]] = {
+        "basic": DEFAULT_RULE_NAMES,
+        "ru_152": (
+            "EMAIL",
+            "PHONE",
+            "PASSPORT",
+            "SNILS",
+            "INN",
+            "CARD",
+            "PERSON",
+            "ONLINE_ACCOUNT",
+            "PROFILE_URL",
+            "SOCIAL_HANDLE",
+            "USERNAME",
+        ),
+        "ru_152_strict": (
+            "EMAIL",
+            "PHONE",
+            "PASSPORT",
+            "SNILS",
+            "INN",
+            "CARD",
+            "PERSON",
+            "ONLINE_ACCOUNT",
+            "PROFILE_URL",
+            "SOCIAL_HANDLE",
+            "USERNAME",
+            "IP_ADDRESS",
+            "COOKIE_ID",
+            "DEVICE_ID",
+            "USER_ID",
+        ),
+    }
 
     def __init__(
         self,
         vault: Optional[BaseVault] = None,
         enabled_rules: Optional[Iterable[str]] = None,
         rules: Optional[List[Tuple[str, str]]] = None,
+        profile: str = "basic",
     ):
         """
         Initialize the RAG Sanitizer.
         :param vault: Storage backend. Defaults to MemoryVault.
         :param enabled_rules: Built-in rule names to enable. Defaults to DEFAULT_RULE_NAMES.
         :param rules: Explicit rule list as (entity_type, regex pattern) tuples.
+        :param profile: Built-in rule profile. One of: basic, ru_152, ru_152_strict.
         """
         self.vault = vault if vault else MemoryVault()
 
@@ -52,7 +91,14 @@ class TextSanitizer:
         if rules is not None:
             self.rules = [(self._normalize_entity_type(name), pattern) for name, pattern in rules]
         else:
-            self.rules = self._build_rules(enabled_rules or self.DEFAULT_RULE_NAMES)
+            selected_rules = enabled_rules if enabled_rules is not None else self._rules_for_profile(profile)
+            self.rules = self._build_rules(selected_rules)
+
+    def _rules_for_profile(self, profile: str) -> Tuple[str, ...]:
+        profile_name = profile.lower()
+        if profile_name not in self.PROFILES:
+            raise ValueError(f"Unknown RAG profile: {profile}")
+        return self.PROFILES[profile_name]
 
     def _build_rules(self, enabled_rules: Iterable[str]) -> List[Tuple[str, str]]:
         rules = []

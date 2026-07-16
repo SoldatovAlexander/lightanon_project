@@ -12,6 +12,7 @@ RAG-обезличивание текста:
 
 ```bash
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json>
+lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --profile ru_152
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules EMAIL,PHONE,INN
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
@@ -31,6 +32,7 @@ lightanon rag inspect-vault <vault.json>
 - `restore`: восстановить исходные значения по токенам,
 - `inspect-vault`: показать статистику vault без раскрытия исходных значений,
 - `--vault`: JSON-файл с соответствиями токенов,
+- `--profile`: профиль правил для `sanitize`: `basic`, `ru_152`, `ru_152_strict`,
 - `--rules`: список встроенных правил для `sanitize`, разделенный запятыми,
 - `--encoding`: кодировка текстовых файлов, по умолчанию `utf-8`.
 
@@ -64,6 +66,7 @@ lightanon data/input.parquet data/output.csv -c schema.yaml --engine polars
 
 # RAG sanitize -> restore
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
@@ -78,6 +81,7 @@ lightanon rag inspect-vault vault.json
 
 Для RAG CLI:
 - `sanitize` создает или дополняет `vault.json`,
+- `--profile` выбирает готовый набор правил; `--rules` имеет более высокий приоритет,
 - `--rules` включает только указанные правила; доступные значения: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`,
 - повторный `sanitize` с тем же vault переиспользует уже созданные токены,
 - `restore` требует тот же vault, который использовался при `sanitize`,

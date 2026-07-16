@@ -101,6 +101,12 @@ def _run_rag_cli(argv):
     sanitize_parser.add_argument("--vault", required=True, help="Path to JSON token vault")
     sanitize_parser.add_argument("--encoding", default="utf-8", help="Text encoding")
     sanitize_parser.add_argument("--rules", help="Comma-separated built-in rules, for example EMAIL,PHONE,INN")
+    sanitize_parser.add_argument(
+        "--profile",
+        choices=sorted(la.rag.TextSanitizer.PROFILES),
+        default="basic",
+        help="Built-in RAG rule profile",
+    )
 
     restore_parser = subparsers.add_parser("restore", help="Restore original values from reversible tokens")
     restore_parser.add_argument("input_file", help="Path to input text file")
@@ -132,7 +138,7 @@ def _run_rag_cli(argv):
     if args.command == "sanitize":
         enabled_rules = _parse_rule_names(args.rules) if args.rules else None
         vault = la.rag.FileVault(args.vault)
-        sanitizer = la.rag.TextSanitizer(vault=vault, enabled_rules=enabled_rules)
+        sanitizer = la.rag.TextSanitizer(vault=vault, enabled_rules=enabled_rules, profile=args.profile)
         result = sanitizer.sanitize(text)
     else:
         vault = la.rag.FileVault(args.vault)

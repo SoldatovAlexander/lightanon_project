@@ -65,6 +65,22 @@ class Patterns:
     # Ex: username: ivan_dev, логин: petrov
     USERNAME = r'\b(?:username|user|login|nick|nickname|логин|ник(?:нейм)?|пользователь)\s*[:=]\s*@?[A-Za-z0-9][A-Za-z0-9_.-]{2,31}\b'
 
+    # --- TECHNICAL IDENTIFIERS ---
+    # Ex: 192.168.1.10
+    IP_ADDRESS = r'\b(?:25[0-5]|2[0-4]\d|1?\d?\d)(?:\.(?:25[0-5]|2[0-4]\d|1?\d?\d)){3}\b'
+
+    # Explicitly labelled cookie/session IDs to avoid matching arbitrary hashes.
+    # Ex: cookie_id: abc123, session=xyZ-789
+    COOKIE_ID = r'\b(?:cookie(?:_id)?|session(?:_id)?)\s*[:=]\s*[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}\b'
+
+    # Explicitly labelled device/client IDs.
+    # Ex: device_id: a1b2c3d4, client id = 123e4567-e89b-12d3-a456-426614174000
+    DEVICE_ID = r'\b(?:device(?:_id)?|client(?:_id)?|device id|client id)\s*[:=]\s*[A-Za-z0-9][A-Za-z0-9_.:-]{7,127}\b'
+
+    # Explicitly labelled user IDs.
+    # Ex: user_id: 123456, id пользователя = abc-123
+    USER_ID = r'\b(?:user(?:_id)?|user id|id пользователя|идентификатор пользователя)\s*[:=]\s*[A-Za-z0-9][A-Za-z0-9_.:-]{3,127}\b'
+
     # --- FINANCE ---
     # Credit Card: 13-19 digits, potentially grouped
     CREDIT_CARD = r'\b(?:\d{4}[\s\-]?){3}\d{4}\b'
