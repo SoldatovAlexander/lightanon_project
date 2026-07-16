@@ -78,5 +78,6 @@ pytest -q
 - Руководство по CLI: `docs/ru/cli.md`
 - Руководство по Streaming: `docs/ru/streaming.md`
 - Руководство по RAG: `docs/ru/rag.md`
+- RAG и 152-ФЗ: `docs/ru/rag-compliance.md`
 - Решение проблем: `docs/ru/troubleshooting.md`
 - English docs index: `docs/en/README.md`

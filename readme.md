@@ -84,5 +84,6 @@ pytest -q
 - CLI guide: `docs/en/cli.md`
 - Streaming guide: `docs/en/streaming.md`
 - RAG guide: `docs/en/rag.md`
+- RAG compliance notes: `docs/en/rag-compliance.md`
 - Troubleshooting: `docs/en/troubleshooting.md`
 - Russian docs index: `docs/ru/README.md`

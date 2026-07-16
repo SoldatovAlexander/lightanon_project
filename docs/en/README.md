@@ -8,10 +8,12 @@ This is the main documentation entry point for English-speaking users.
 - [CLI Guide](./cli.md)
 - [Streaming Guide](./streaming.md)
 - [RAG Guide](./rag.md)
+- [RAG Compliance Notes](./rag-compliance.md)
 - [Troubleshooting](./troubleshooting.md)
 
 ## Scope
 The docs cover current project capabilities in this repository:
 - batch anonymization for `pandas` and `polars`,
 - stream/event anonymization with `StreamEngine`,
-- reversible text sanitization for RAG.
+- reversible text sanitization for RAG,
+- engineering guidance for RAG workflows with personal data.
