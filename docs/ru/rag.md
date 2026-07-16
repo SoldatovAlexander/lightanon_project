@@ -96,6 +96,22 @@ clean_metadata = sanitizer.sanitize_metadata(metadata)
 
 `sanitize_metadata(...)` рекурсивно обрабатывает строковые значения внутри `dict`, `list`, `tuple` и `set`. Нестроковые значения сохраняются.
 
+Для симметричного восстановления metadata используйте те же политики, что и для текста:
+
+```python
+restored_metadata = sanitizer.deanonymize_metadata(clean_metadata)
+masked_metadata = sanitizer.deanonymize_metadata(clean_metadata, policy="mask")
+```
+
+Если нужно обработать RAG-документ целиком, используйте document-level методы:
+
+```python
+clean_text, clean_metadata = sanitizer.sanitize_document(text, metadata)
+restored_text, restored_metadata = sanitizer.deanonymize_document(clean_text, clean_metadata)
+```
+
+Текст и metadata используют один vault, поэтому одинаковые значения получают одинаковые токены.
+
 ## Scan и отчет
 
 `scan(...)` проверяет текст без замены и без записи в vault:

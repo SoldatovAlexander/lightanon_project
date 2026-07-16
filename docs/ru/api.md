@@ -106,6 +106,9 @@ RAG-блок не является набором `BaseRule` для колоно
 Основные методы:
 - `sanitize(text: str) -> str`
 - `sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]`
+- `deanonymize_metadata(metadata: Dict[str, Any], policy: str = "restore", allowed_entity_types=None) -> Dict[str, Any]`
+- `sanitize_document(text: str, metadata: Optional[Dict[str, Any]] = None) -> Tuple[str, Dict[str, Any]]`
+- `deanonymize_document(text: str, metadata: Optional[Dict[str, Any]] = None, policy: str = "restore", allowed_entity_types=None) -> Tuple[str, Dict[str, Any]]`
 - `scan(text: str) -> Dict[str, object]`
 - `sanitize_with_report(text: str) -> Tuple[str, Dict[str, object]]`
 - `deanonymize(text: str, policy: str = "restore", allowed_entity_types=None) -> str`
@@ -128,6 +131,8 @@ restored = sanitizer.deanonymize(answer)
 ```
 
 `sanitize_metadata(...)` рекурсивно обрабатывает строковые значения в `dict`, `list`, `tuple` и `set`, сохраняя нестроковые значения. Это полезно для RAG-документов, где персональные данные могут находиться в `source_url`, `author`, `tags`, `file_path` и других metadata-полях.
+`deanonymize_metadata(...)` выполняет симметричное восстановление metadata с теми же политиками, что и `deanonymize(...)`.
+`sanitize_document(...)` и `deanonymize_document(...)` обрабатывают текст и metadata одной операцией с общим vault.
 
 `scan(...)` ищет сущности без замены текста и без записи в vault. Отчет содержит счетчики по типам и уровень риска, но не исходные значения.
 `sanitize_with_report(...)` возвращает очищенный текст и отчет с сущностями до обработки и остаточными сущностями после обработки.

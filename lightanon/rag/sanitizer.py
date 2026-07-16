@@ -227,6 +227,50 @@ class TextSanitizer:
             raise ValueError("metadata must be a dictionary")
         return self._sanitize_metadata_value(metadata)
 
+    def deanonymize_metadata(
+        self,
+        metadata: Dict[str, Any],
+        policy: str = "restore",
+        allowed_entity_types: Optional[Iterable[str]] = None,
+    ) -> Dict[str, Any]:
+        """
+        Recursively deanonymize string values in RAG metadata.
+        Non-string scalar values are preserved.
+        """
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be a dictionary")
+        return self._deanonymize_metadata_value(metadata, policy, allowed_entity_types)
+
+    def sanitize_document(
+        self,
+        text: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Sanitize RAG document text and metadata with the same vault.
+        """
+        clean_text = self.sanitize(text)
+        clean_metadata = self.sanitize_metadata(metadata or {})
+        return clean_text, clean_metadata
+
+    def deanonymize_document(
+        self,
+        text: str,
+        metadata: Optional[Dict[str, Any]] = None,
+        policy: str = "restore",
+        allowed_entity_types: Optional[Iterable[str]] = None,
+    ) -> Tuple[str, Dict[str, Any]]:
+        """
+        Deanonymize RAG document text and metadata with the same policy.
+        """
+        restored_text = self.deanonymize(text, policy=policy, allowed_entity_types=allowed_entity_types)
+        restored_metadata = self.deanonymize_metadata(
+            metadata or {},
+            policy=policy,
+            allowed_entity_types=allowed_entity_types,
+        )
+        return restored_text, restored_metadata
+
     def _sanitize_metadata_value(self, value: Any) -> Any:
         if isinstance(value, str):
             return self.sanitize(value)
@@ -238,6 +282,27 @@ class TextSanitizer:
             return tuple(self._sanitize_metadata_value(item) for item in value)
         if isinstance(value, set):
             return {self._sanitize_metadata_value(item) for item in value}
+        return value
+
+    def _deanonymize_metadata_value(
+        self,
+        value: Any,
+        policy: str,
+        allowed_entity_types: Optional[Iterable[str]],
+    ) -> Any:
+        if isinstance(value, str):
+            return self.deanonymize(value, policy=policy, allowed_entity_types=allowed_entity_types)
+        if isinstance(value, dict):
+            return {
+                key: self._deanonymize_metadata_value(item, policy, allowed_entity_types)
+                for key, item in value.items()
+            }
+        if isinstance(value, list):
+            return [self._deanonymize_metadata_value(item, policy, allowed_entity_types) for item in value]
+        if isinstance(value, tuple):
+            return tuple(self._deanonymize_metadata_value(item, policy, allowed_entity_types) for item in value)
+        if isinstance(value, set):
+            return {self._deanonymize_metadata_value(item, policy, allowed_entity_types) for item in value}
         return value
 
     def deanonymize(

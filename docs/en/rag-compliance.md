@@ -74,6 +74,17 @@ Sanitize metadata with the same sanitizer and vault:
 clean_metadata = sanitizer.sanitize_metadata(metadata)
 ```
 
+To process a RAG document in one operation:
+
+```python
+clean_text, clean_metadata = sanitizer.sanitize_document(text, metadata)
+restored_text, restored_metadata = sanitizer.deanonymize_document(
+    clean_text,
+    clean_metadata,
+    policy="mask",
+)
+```
+
 ## Pre-LLM Scan
 
 Use `scan` or `sanitize_with_report` before sending context to an LLM:

@@ -96,6 +96,22 @@ clean_metadata = sanitizer.sanitize_metadata(metadata)
 
 `sanitize_metadata(...)` recursively sanitizes string values inside `dict`, `list`, `tuple`, and `set` containers. Non-string values are preserved.
 
+For symmetric metadata restoration, use the same policies as for text:
+
+```python
+restored_metadata = sanitizer.deanonymize_metadata(clean_metadata)
+masked_metadata = sanitizer.deanonymize_metadata(clean_metadata, policy="mask")
+```
+
+To process a whole RAG document, use document-level methods:
+
+```python
+clean_text, clean_metadata = sanitizer.sanitize_document(text, metadata)
+restored_text, restored_metadata = sanitizer.deanonymize_document(clean_text, clean_metadata)
+```
+
+Text and metadata share one vault, so repeated values receive the same tokens.
+
 ## Scan and Report
 
 `scan(...)` checks text without replacement and without writing to the vault:

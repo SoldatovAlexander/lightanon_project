@@ -318,6 +318,88 @@ def test_sanitize_metadata_requires_dict():
         sanitizer.sanitize_metadata(["ivan@example.com"])
 
 
+def test_deanonymize_metadata_restores_nested_tokens():
+    sanitizer = TextSanitizer(profile="ru_152")
+    clean_metadata = sanitizer.sanitize_metadata(
+        {
+            "author": "Telegram: @ivanov_dev",
+            "tags": ["ivan@example.com"],
+            "nested": {"inn": "ИНН 7707083893"},
+        }
+    )
+
+    restored_metadata = sanitizer.deanonymize_metadata(clean_metadata)
+
+    assert restored_metadata["author"] == "Telegram: @ivanov_dev"
+    assert restored_metadata["tags"] == ["ivan@example.com"]
+    assert restored_metadata["nested"]["inn"] == "ИНН 7707083893"
+
+
+def test_deanonymize_metadata_honors_policy():
+    sanitizer = TextSanitizer(profile="ru_152")
+    clean_metadata = sanitizer.sanitize_metadata({"email": "ivan@example.com", "inn": "ИНН 7707083893"})
+
+    masked = sanitizer.deanonymize_metadata(clean_metadata, policy="mask")
+    restored_allowed = sanitizer.deanonymize_metadata(
+        clean_metadata,
+        policy="restore_allowed_only",
+        allowed_entity_types=["EMAIL"],
+    )
+
+    assert masked["email"] == "[EMAIL]"
+    assert masked["inn"] == "ИНН [INN]"
+    assert restored_allowed["email"] == "ivan@example.com"
+    assert "7707083893" not in restored_allowed["inn"]
+    assert re.search(r"\[INN_[a-f0-9]{8}\]", restored_allowed["inn"])
+
+
+def test_deanonymize_metadata_requires_dict():
+    sanitizer = TextSanitizer()
+
+    with pytest.raises(ValueError, match="metadata must be a dictionary"):
+        sanitizer.deanonymize_metadata(["[EMAIL_aaaaaaaa]"])
+
+
+def test_sanitize_document_sanitizes_text_and_metadata_with_same_vault():
+    sanitizer = TextSanitizer(profile="ru_152")
+
+    clean_text, clean_metadata = sanitizer.sanitize_document(
+        "Email: ivan@example.com",
+        {"contact": "ivan@example.com", "source_url": "github.com/ivan_dev"},
+    )
+
+    text_token = re.search(r"\[EMAIL_[a-f0-9]{8}\]", clean_text).group()
+    metadata_token = re.search(r"\[EMAIL_[a-f0-9]{8}\]", clean_metadata["contact"]).group()
+    assert text_token == metadata_token
+    assert "github.com/ivan_dev" not in clean_metadata["source_url"]
+    assert re.search(r"\[PROFILE_URL_[a-f0-9]{8}\]", clean_metadata["source_url"])
+
+
+def test_deanonymize_document_restores_text_and_metadata():
+    sanitizer = TextSanitizer(profile="ru_152")
+    original_text = "Email: ivan@example.com"
+    original_metadata = {"author": "Telegram: @ivanov_dev"}
+    clean_text, clean_metadata = sanitizer.sanitize_document(original_text, original_metadata)
+
+    restored_text, restored_metadata = sanitizer.deanonymize_document(clean_text, clean_metadata)
+
+    assert restored_text == original_text
+    assert restored_metadata == original_metadata
+
+
+def test_deanonymize_document_honors_policy():
+    sanitizer = TextSanitizer(profile="ru_152")
+    clean_text, clean_metadata = sanitizer.sanitize_document(
+        "Email: ivan@example.com",
+        {"author": "Telegram: @ivanov_dev"},
+    )
+
+    masked_text, masked_metadata = sanitizer.deanonymize_document(clean_text, clean_metadata, policy="mask")
+
+    assert masked_text == "Email: [EMAIL]"
+    assert masked_metadata["author"] == "[ONLINE_ACCOUNT]"
+
+
 def test_scan_reports_entity_counts_without_values():
     sanitizer = TextSanitizer(profile="ru_152")
 

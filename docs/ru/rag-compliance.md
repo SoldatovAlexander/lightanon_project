@@ -76,6 +76,17 @@ clean_metadata = sanitizer.sanitize_metadata(metadata)
 
 Это сохраняет консистентность токенов между текстом и metadata.
 
+Для обработки RAG-документа одной операцией:
+
+```python
+clean_text, clean_metadata = sanitizer.sanitize_document(text, metadata)
+restored_text, restored_metadata = sanitizer.deanonymize_document(
+    clean_text,
+    clean_metadata,
+    policy="mask",
+)
+```
+
 ## Проверка перед отправкой в LLM
 
 Перед отправкой текста во внешний LLM используйте `scan` или `sanitize_with_report`:

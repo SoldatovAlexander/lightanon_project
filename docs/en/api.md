@@ -106,6 +106,9 @@ Public exports:
 Main methods:
 - `sanitize(text: str) -> str`
 - `sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]`
+- `deanonymize_metadata(metadata: Dict[str, Any], policy: str = "restore", allowed_entity_types=None) -> Dict[str, Any]`
+- `sanitize_document(text: str, metadata: Optional[Dict[str, Any]] = None) -> Tuple[str, Dict[str, Any]]`
+- `deanonymize_document(text: str, metadata: Optional[Dict[str, Any]] = None, policy: str = "restore", allowed_entity_types=None) -> Tuple[str, Dict[str, Any]]`
 - `scan(text: str) -> Dict[str, object]`
 - `sanitize_with_report(text: str) -> Tuple[str, Dict[str, object]]`
 - `deanonymize(text: str, policy: str = "restore", allowed_entity_types=None) -> str`
@@ -128,6 +131,8 @@ restored = sanitizer.deanonymize(answer)
 ```
 
 `sanitize_metadata(...)` recursively sanitizes string values in `dict`, `list`, `tuple`, and `set` containers while preserving non-string values. This is useful for RAG documents where personal data may live in `source_url`, `author`, `tags`, `file_path`, and other metadata fields.
+`deanonymize_metadata(...)` performs symmetric metadata restoration with the same policies as `deanonymize(...)`.
+`sanitize_document(...)` and `deanonymize_document(...)` process text and metadata in one operation with a shared vault.
 
 `scan(...)` detects entities without replacing text or writing to the vault. The report contains type counters and risk level, but not original values.
 `sanitize_with_report(...)` returns sanitized text plus a report with entities before processing and residual entities after processing.
