@@ -10,6 +10,7 @@ This is the main documentation entry point for English-speaking users.
 - [RAG Guide](./rag.md)
 - [RAG Compliance Notes](./rag-compliance.md)
 - [Troubleshooting](./troubleshooting.md)
+- [Changelog](../../CHANGELOG.md)
 
 ## Scope
 The docs cover current project capabilities in this repository:

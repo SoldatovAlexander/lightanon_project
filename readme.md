@@ -80,6 +80,7 @@ pytest -q
 ```
 
 ## Documentation
+- Changelog: `CHANGELOG.md`
 - Main English docs index: `docs/en/README.md`
 - API reference: `docs/en/api.md`
 - CLI guide: `docs/en/cli.md`

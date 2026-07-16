@@ -74,6 +74,7 @@ pytest -q
 ```
 
 ## Документация
+- Changelog: `CHANGELOG.md`
 - Главный индекс русской документации: `docs/ru/README.md`
 - Справочник API: `docs/ru/api.md`
 - Руководство по CLI: `docs/ru/cli.md`

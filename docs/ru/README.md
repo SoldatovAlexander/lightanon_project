@@ -10,6 +10,7 @@
 - [Руководство по RAG](./rag.md)
 - [RAG и 152-ФЗ](./rag-compliance.md)
 - [Решение проблем](./troubleshooting.md)
+- [Changelog](../../CHANGELOG.md)
 
 ## Покрытие
 Документы описывают текущее состояние проекта:
