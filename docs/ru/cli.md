@@ -13,6 +13,7 @@ RAG-обезличивание текста:
 ```bash
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json>
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules EMAIL,PHONE,INN
+lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
 lightanon rag inspect-vault <vault.json>
 ```
@@ -64,6 +65,7 @@ lightanon data/input.parquet data/output.csv -c schema.yaml --engine polars
 # RAG sanitize -> restore
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag inspect-vault vault.json
 ```
@@ -76,7 +78,7 @@ lightanon rag inspect-vault vault.json
 
 Для RAG CLI:
 - `sanitize` создает или дополняет `vault.json`,
-- `--rules` включает только указанные правила; доступные значения: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`,
+- `--rules` включает только указанные правила; доступные значения: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`,
 - повторный `sanitize` с тем же vault переиспользует уже созданные токены,
 - `restore` требует тот же vault, который использовался при `sanitize`,
 - поврежденный или неверно структурированный vault завершает команду ошибкой.

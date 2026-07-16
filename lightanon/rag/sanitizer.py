@@ -7,6 +7,16 @@ from .patterns import Patterns
 
 class TextSanitizer:
     AVAILABLE_RULES: Dict[str, str] = {
+        "ONLINE_ACCOUNT": "|".join(
+            [
+                Patterns.ONLINE_ACCOUNT_RU,
+                Patterns.ONLINE_ACCOUNT_EN,
+                Patterns.RESOURCE_ACCOUNT,
+            ]
+        ),
+        "PROFILE_URL": Patterns.PROFILE_URL,
+        "SOCIAL_HANDLE": Patterns.SOCIAL_HANDLE,
+        "USERNAME": Patterns.USERNAME,
         "EMAIL": Patterns.EMAIL,
         "PHONE": Patterns.PHONE_RU,
         "PASSPORT": Patterns.PASSPORT_RU,

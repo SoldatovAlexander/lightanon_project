@@ -107,8 +107,9 @@ Main methods:
 - `deanonymize(text: str) -> str`
 - `add_rule(name: str, pattern: str)`
 
-Built-in rules: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`.
+Built-in rules: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`.
 `INN` is disabled by default so bare 10/12 digit numbers do not conflict with document patterns without context.
+`ONLINE_ACCOUNT` targets combined online identifiers such as `nickname ivan_dev on Habr` or `Telegram: @ivanov` and tokenizes the pair as one entity.
 
 Example:
 
@@ -141,7 +142,7 @@ Additional method:
 - `stats() -> Dict[str, object]`: returns path, total mappings, and token-type counters without original values.
 
 ### `Patterns`
-Built-in regex patterns for email, RU phones, RU passport numbers, SNILS, INN, card numbers, and a broad RU full-name heuristic.
+Built-in regex patterns for email, RU phones, RU passport numbers, SNILS, INN, card numbers, online identifiers, and a broad RU full-name heuristic.
 The passport pattern requires a separator before the 6-digit number, for example `4500 123456`, to avoid classifying a 10-digit INN as a passport.
 
 ## `polars` Compatibility Note

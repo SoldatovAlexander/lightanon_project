@@ -103,6 +103,50 @@ def test_inn_is_opt_in_and_does_not_conflict_with_passport():
     assert re.search(r"\[PASSPORT_[a-f0-9]{8}\]", passport_clean)
 
 
+def test_online_account_pair_is_tokenized_as_single_entity():
+    sanitizer = TextSanitizer(enabled_rules=["ONLINE_ACCOUNT", "USERNAME"])
+
+    clean = sanitizer.sanitize("Публикация: никнейм ivan_dev на Habr.")
+
+    assert "ivan_dev" not in clean
+    assert "Habr" not in clean
+    assert re.search(r"\[ONLINE_ACCOUNT_[a-f0-9]{8}\]", clean)
+    assert "[USERNAME_" not in clean
+
+
+def test_resource_account_is_tokenized_as_single_entity():
+    sanitizer = TextSanitizer(enabled_rules=["ONLINE_ACCOUNT", "SOCIAL_HANDLE"])
+
+    clean = sanitizer.sanitize("Контакт: Telegram: @ivanov_dev.")
+
+    assert "Telegram" not in clean
+    assert "@ivanov_dev" not in clean
+    assert re.search(r"\[ONLINE_ACCOUNT_[a-f0-9]{8}\]", clean)
+    assert "[SOCIAL_HANDLE_" not in clean
+
+
+def test_profile_url_and_social_handle_are_detected():
+    sanitizer = TextSanitizer(enabled_rules=["PROFILE_URL", "SOCIAL_HANDLE"])
+
+    clean = sanitizer.sanitize("Профили: github.com/ivan_dev и @petrov_dev.")
+
+    assert "github.com/ivan_dev" not in clean
+    assert "@petrov_dev" not in clean
+    assert re.search(r"\[PROFILE_URL_[a-f0-9]{8}\]", clean)
+    assert re.search(r"\[SOCIAL_HANDLE_[a-f0-9]{8}\]", clean)
+
+
+def test_online_identifier_rules_do_not_break_email_detection():
+    sanitizer = TextSanitizer(enabled_rules=["ONLINE_ACCOUNT", "SOCIAL_HANDLE", "EMAIL"])
+
+    clean = sanitizer.sanitize("Email ivan@example.com, handle @ivan_dev.")
+
+    assert "ivan@example.com" not in clean
+    assert "@ivan_dev" not in clean
+    assert re.search(r"\[EMAIL_[a-f0-9]{8}\]", clean)
+    assert re.search(r"\[SOCIAL_HANDLE_[a-f0-9]{8}\]", clean)
+
+
 def test_unknown_builtin_rule_fails_fast():
     with pytest.raises(ValueError, match="Unknown built-in RAG rule"):
         TextSanitizer(enabled_rules=["EMAIL", "UNKNOWN"])

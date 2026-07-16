@@ -39,6 +39,14 @@ The built-in `INN` rule is also available, but disabled by default: bare 10/12 d
 sanitizer = TextSanitizer(enabled_rules=["EMAIL", "PHONE", "INN"])
 ```
 
+Online identifier rules are available:
+- `ONLINE_ACCOUNT`: combined pairs such as `nickname ivan_dev on Habr`, `Telegram: @ivanov`;
+- `PROFILE_URL`: profile links such as `github.com/ivan_dev`, `vk.com/id123456`, `t.me/ivanov`;
+- `SOCIAL_HANDLE`: handles such as `@ivan_dev`;
+- `USERNAME`: explicitly labelled logins such as `login: petrov`.
+
+The `nickname/login + resource` pair is tokenized as one entity because the combination of identifier and platform can point to a specific person.
+
 The public `Patterns` class can be reused when configuring custom rules.
 
 For full control, pass an explicit rule list:
@@ -87,10 +95,11 @@ RAG commands work with plain text files and require `--vault` so restoration can
 ```bash
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag inspect-vault vault.json
 ```
 
 `sanitize` writes tokens to the vault. `restore` uses the same vault to replace tokens with original values.
 `inspect-vault` prints saved mapping counts and token-type distribution without revealing stored values.
-`--rules` enables only the listed built-in rules and is useful when you need to disable the broad name heuristic or explicitly enable `INN`.
+`--rules` enables only the listed built-in rules and is useful when you need to disable the broad name heuristic, explicitly enable `INN`, or process online identifiers.
