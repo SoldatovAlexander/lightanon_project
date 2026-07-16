@@ -213,6 +213,69 @@ def test_unknown_token_is_left_unchanged():
     assert sanitizer.deanonymize("Hello [EMAIL_aaaaaaaa]") == "Hello [EMAIL_aaaaaaaa]"
 
 
+def test_sanitize_metadata_recursively_sanitizes_strings():
+    sanitizer = TextSanitizer(profile="ru_152")
+    metadata = {
+        "source_url": "https://github.com/ivan_dev",
+        "author": "Telegram: @ivanov_dev",
+        "tags": ["client", "ivan@example.com"],
+        "nested": {
+            "inn": "ИНН 7707083893",
+            "score": 10,
+            "active": True,
+            "empty": None,
+        },
+    }
+
+    clean = sanitizer.sanitize_metadata(metadata)
+
+    assert metadata["source_url"] == "https://github.com/ivan_dev"
+    assert "github.com/ivan_dev" not in clean["source_url"]
+    assert "Telegram" not in clean["author"]
+    assert "@ivanov_dev" not in clean["author"]
+    assert "ivan@example.com" not in clean["tags"][1]
+    assert "7707083893" not in clean["nested"]["inn"]
+    assert clean["nested"]["score"] == 10
+    assert clean["nested"]["active"] is True
+    assert clean["nested"]["empty"] is None
+    assert re.search(r"\[PROFILE_URL_[a-f0-9]{8}\]", clean["source_url"])
+    assert re.search(r"\[ONLINE_ACCOUNT_[a-f0-9]{8}\]", clean["author"])
+    assert re.search(r"\[EMAIL_[a-f0-9]{8}\]", clean["tags"][1])
+    assert re.search(r"\[INN_[a-f0-9]{8}\]", clean["nested"]["inn"])
+
+
+def test_sanitize_metadata_reuses_tokens_with_text_sanitize():
+    sanitizer = TextSanitizer(profile="ru_152")
+
+    clean_text = sanitizer.sanitize("Email: ivan@example.com")
+    clean_metadata = sanitizer.sanitize_metadata({"email": "ivan@example.com"})
+
+    text_token = re.search(r"\[EMAIL_[a-f0-9]{8}\]", clean_text).group()
+    metadata_token = re.search(r"\[EMAIL_[a-f0-9]{8}\]", clean_metadata["email"]).group()
+    assert text_token == metadata_token
+
+
+def test_sanitize_metadata_preserves_container_types():
+    sanitizer = TextSanitizer(enabled_rules=["EMAIL"])
+    metadata = {
+        "tuple": ("ivan@example.com", 1),
+        "set": {"ivan@example.com", "public"},
+    }
+
+    clean = sanitizer.sanitize_metadata(metadata)
+
+    assert isinstance(clean["tuple"], tuple)
+    assert isinstance(clean["set"], set)
+    assert "ivan@example.com" not in str(clean)
+
+
+def test_sanitize_metadata_requires_dict():
+    sanitizer = TextSanitizer()
+
+    with pytest.raises(ValueError, match="metadata must be a dictionary"):
+        sanitizer.sanitize_metadata(["ivan@example.com"])
+
+
 def test_file_vault_persists_mappings(tmp_path):
     vault_path = tmp_path / "vault.json"
     vault = FileVault(str(vault_path))

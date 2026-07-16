@@ -68,6 +68,24 @@ from lightanon.rag import Patterns, TextSanitizer
 sanitizer = TextSanitizer(rules=[("EMAIL", Patterns.EMAIL)])
 ```
 
+## Metadata
+
+In RAG workflows, personal data often appears outside chunk text, in metadata such as `source_url`, `author`, `tags`, `file_path`, profile links, and account identifiers.
+
+```python
+sanitizer = TextSanitizer(profile="ru_152")
+
+metadata = {
+    "source_url": "https://github.com/ivan_dev",
+    "author": "Telegram: @ivanov_dev",
+    "tags": ["client", "ivan@example.com"],
+}
+
+clean_metadata = sanitizer.sanitize_metadata(metadata)
+```
+
+`sanitize_metadata(...)` recursively sanitizes string values inside `dict`, `list`, `tuple`, and `set` containers. Non-string values are preserved.
+
 ## Custom Pattern
 
 ```python

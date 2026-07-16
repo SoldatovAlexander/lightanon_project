@@ -1,6 +1,6 @@
 import re
 import uuid
-from typing import Dict, Iterable, List, Optional, Tuple
+from typing import Any, Dict, Iterable, List, Optional, Tuple
 from .vault import BaseVault, MemoryVault
 from .patterns import Patterns
 
@@ -166,6 +166,28 @@ class TextSanitizer:
 
     def _overlaps_existing_span(self, start: int, end: int, spans: List[Tuple[int, int]]) -> bool:
         return any(start < existing_end and existing_start < end for existing_start, existing_end in spans)
+
+    def sanitize_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
+        """
+        Recursively sanitize string values in RAG metadata.
+        Non-string scalar values are preserved.
+        """
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be a dictionary")
+        return self._sanitize_metadata_value(metadata)
+
+    def _sanitize_metadata_value(self, value: Any) -> Any:
+        if isinstance(value, str):
+            return self.sanitize(value)
+        if isinstance(value, dict):
+            return {key: self._sanitize_metadata_value(item) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._sanitize_metadata_value(item) for item in value]
+        if isinstance(value, tuple):
+            return tuple(self._sanitize_metadata_value(item) for item in value)
+        if isinstance(value, set):
+            return {self._sanitize_metadata_value(item) for item in value}
+        return value
 
     def deanonymize(self, text: str) -> str:
         """

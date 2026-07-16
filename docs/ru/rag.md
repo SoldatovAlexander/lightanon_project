@@ -68,6 +68,24 @@ from lightanon.rag import Patterns, TextSanitizer
 sanitizer = TextSanitizer(rules=[("EMAIL", Patterns.EMAIL)])
 ```
 
+## Metadata
+
+В RAG персональные данные часто находятся не только в тексте чанка, но и в metadata: `source_url`, `author`, `tags`, `file_path`, ссылках на профили и идентификаторах аккаунтов.
+
+```python
+sanitizer = TextSanitizer(profile="ru_152")
+
+metadata = {
+    "source_url": "https://github.com/ivan_dev",
+    "author": "Telegram: @ivanov_dev",
+    "tags": ["client", "ivan@example.com"],
+}
+
+clean_metadata = sanitizer.sanitize_metadata(metadata)
+```
+
+`sanitize_metadata(...)` рекурсивно обрабатывает строковые значения внутри `dict`, `list`, `tuple` и `set`. Нестроковые значения сохраняются.
+
 ## Кастомное правило
 
 ```python

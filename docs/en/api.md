@@ -105,6 +105,7 @@ Public exports:
 
 Main methods:
 - `sanitize(text: str) -> str`
+- `sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]`
 - `deanonymize(text: str) -> str`
 - `add_rule(name: str, pattern: str)`
 
@@ -123,6 +124,8 @@ clean = sanitizer.sanitize("Ivan Ivanov, email ivan@example.com")
 answer = f"Contact: {clean}"
 restored = sanitizer.deanonymize(answer)
 ```
+
+`sanitize_metadata(...)` recursively sanitizes string values in `dict`, `list`, `tuple`, and `set` containers while preserving non-string values. This is useful for RAG documents where personal data may live in `source_url`, `author`, `tags`, `file_path`, and other metadata fields.
 
 ### `BaseVault`
 Abstract token-storage interface:
