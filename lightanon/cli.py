@@ -136,6 +136,17 @@ def _run_rag_cli(argv):
     inspect_parser = subparsers.add_parser("inspect-vault", help="Print vault statistics without revealing values")
     inspect_parser.add_argument("vault_file", help="Path to JSON token vault")
 
+    delete_token_parser = subparsers.add_parser("delete-token", help="Delete one vault mapping by token")
+    delete_token_parser.add_argument("vault_file", help="Path to JSON token vault")
+    delete_token_parser.add_argument("token", help="Token to delete")
+
+    delete_value_parser = subparsers.add_parser("delete-value", help="Delete one vault mapping by original value")
+    delete_value_parser.add_argument("vault_file", help="Path to JSON token vault")
+    delete_value_parser.add_argument("value", help="Original value to delete")
+
+    clear_vault_parser = subparsers.add_parser("clear-vault", help="Delete all vault mappings")
+    clear_vault_parser.add_argument("vault_file", help="Path to JSON token vault")
+
     args = parser.parse_args(argv)
 
     if args.command == "inspect-vault":
@@ -150,6 +161,24 @@ def _run_rag_cli(argv):
                 print(f" - {entity_type}: {count}")
         else:
             print("Types: none")
+        return
+
+    if args.command == "delete-token":
+        vault = la.rag.FileVault(args.vault_file)
+        deleted = vault.delete_token(args.token)
+        print("Deleted: yes" if deleted else "Deleted: no")
+        return
+
+    if args.command == "delete-value":
+        vault = la.rag.FileVault(args.vault_file)
+        deleted = vault.delete_value(args.value)
+        print("Deleted: yes" if deleted else "Deleted: no")
+        return
+
+    if args.command == "clear-vault":
+        vault = la.rag.FileVault(args.vault_file)
+        vault.clear()
+        print("Vault cleared")
         return
 
     if args.command == "scan":

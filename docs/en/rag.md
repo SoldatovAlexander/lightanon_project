@@ -136,7 +136,10 @@ For production, implement your own `BaseVault` backend.
 Minimum `BaseVault` interface:
 - `get_value(token: str)`,
 - `get_token(value: str)`,
-- `save(token: str, value: str)`.
+- `save(token: str, value: str)`,
+- `delete_token(token: str)`,
+- `delete_value(value: str)`,
+- `clear()`.
 
 `FileVault` stores mappings in a JSON file and is useful for local CLI workflows:
 
@@ -146,7 +149,9 @@ from lightanon.rag import FileVault, TextSanitizer
 sanitizer = TextSanitizer(vault=FileVault("vault.json"))
 ```
 
-`FileVault` validates JSON structure on read and writes changes through a temporary file followed by atomic replacement. `stats()` returns counters only, without original values.
+`FileVault` validates JSON structure on read and writes changes through a temporary file followed by atomic replacement. New entries include `created_at` and `last_used_at`. `stats()` returns counters only, without original values.
+
+The vault contains original personal data. Store it as protected data and delete mappings when they are no longer needed.
 
 ## CLI
 
@@ -162,11 +167,15 @@ lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
 lightanon rag inspect-vault vault.json
+lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
+lightanon rag delete-value vault.json 'ivan@example.com'
+lightanon rag clear-vault vault.json
 ```
 
 `sanitize` writes tokens to the vault. `restore` uses the same vault to replace tokens with original values.
 `restore --policy` controls value disclosure in the final answer: `restore`, `no_personal_data`, `mask`, `restore_allowed_only`.
 `scan` prints a JSON report without writing to the vault and without revealing original values.
 `inspect-vault` prints saved mapping counts and token-type distribution without revealing stored values.
+`delete-token`, `delete-value`, and `clear-vault` manage saved mapping lifecycle.
 `--profile` enables a built-in rule profile. Available profiles: `basic`, `ru_152`, `ru_152_strict`.
 `--rules` enables only the listed built-in rules and is useful when you need to disable the broad name heuristic, explicitly enable `INN`, or process online identifiers.

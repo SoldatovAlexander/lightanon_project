@@ -68,6 +68,7 @@ lightanon rag scan prompt.txt --profile ru_152
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
 lightanon rag inspect-vault vault.json
+lightanon rag clear-vault vault.json
 ```
 
 Supported I/O formats: `.csv`, `.parquet`.

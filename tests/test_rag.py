@@ -364,6 +364,54 @@ def test_file_vault_persists_mappings(tmp_path):
     assert restored_vault.get_token("ivan@example.com") == "[EMAIL_aaaaaaaa]"
 
 
+def test_memory_vault_lifecycle_methods():
+    vault = MemoryVault()
+    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+
+    assert vault.delete_value("ivan@example.com") is True
+    assert vault.get_value("[EMAIL_aaaaaaaa]") is None
+    assert vault.delete_value("ivan@example.com") is False
+
+    vault.save("[PHONE_bbbbbbbb]", "+7 900 123-45-67")
+    assert vault.delete_token("[PHONE_bbbbbbbb]") is True
+    assert vault.get_token("+7 900 123-45-67") is None
+
+    vault.save("[EMAIL_cccccccc]", "anna@example.com")
+    vault.clear()
+    assert vault.get_token("anna@example.com") is None
+
+
+def test_file_vault_lifecycle_methods_persist(tmp_path):
+    vault_path = tmp_path / "vault.json"
+    vault = FileVault(str(vault_path))
+    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+    vault.save("[PHONE_bbbbbbbb]", "+7 900 123-45-67")
+
+    assert vault.delete_value("ivan@example.com") is True
+    assert vault.delete_token("[PHONE_bbbbbbbb]") is True
+
+    restored_vault = FileVault(str(vault_path))
+    assert restored_vault.get_token("ivan@example.com") is None
+    assert restored_vault.get_value("[PHONE_bbbbbbbb]") is None
+
+    restored_vault.save("[EMAIL_cccccccc]", "anna@example.com")
+    restored_vault.clear()
+    assert FileVault(str(vault_path)).stats()["total"] == 0
+
+
+def test_file_vault_writes_entries_with_timestamps(tmp_path):
+    vault_path = tmp_path / "vault.json"
+    vault = FileVault(str(vault_path))
+    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+
+    data = json.loads(vault_path.read_text(encoding="utf-8"))
+
+    assert data["entries"]["[EMAIL_aaaaaaaa]"]["value"] == "ivan@example.com"
+    assert data["entries"]["[EMAIL_aaaaaaaa]"]["created_at"]
+    assert data["entries"]["[EMAIL_aaaaaaaa]"]["last_used_at"]
+    assert FileVault(str(vault_path)).stats()["has_timestamps"] is True
+
+
 def test_file_vault_reuses_token_across_sanitizer_instances(tmp_path):
     vault_path = tmp_path / "vault.json"
 

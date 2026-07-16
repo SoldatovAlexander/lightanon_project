@@ -20,6 +20,9 @@ lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy mask
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy restore_allowed_only --allowed-types EMAIL
 lightanon rag inspect-vault <vault.json>
+lightanon rag delete-token <vault.json> <token>
+lightanon rag delete-value <vault.json> <value>
+lightanon rag clear-vault <vault.json>
 ```
 
 ## Параметры
@@ -35,6 +38,9 @@ lightanon rag inspect-vault <vault.json>
 - `scan`: вывести JSON-отчет по найденным сущностям без записи в vault,
 - `restore`: восстановить исходные значения по токенам,
 - `inspect-vault`: показать статистику vault без раскрытия исходных значений,
+- `delete-token`: удалить один маппинг по токену,
+- `delete-value`: удалить один маппинг по исходному значению,
+- `clear-vault`: удалить все маппинги,
 - `--vault`: JSON-файл с соответствиями токенов,
 - `--profile`: профиль правил для `sanitize`: `basic`, `ru_152`, `ru_152_strict`,
 - `--rules`: список встроенных правил для `sanitize`, разделенный запятыми,
@@ -80,6 +86,8 @@ lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
 lightanon rag inspect-vault vault.json
+lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
+lightanon rag clear-vault vault.json
 ```
 
 ## Поведение во время выполнения

@@ -138,6 +138,9 @@ Abstract token-storage interface:
 - `get_value(token: str)`
 - `get_token(value: str)`
 - `save(token: str, value: str)`
+- `delete_token(token: str) -> bool`
+- `delete_value(value: str) -> bool`
+- `clear() -> None`
 
 ### `MemoryVault`
 In-memory `BaseVault` implementation.
@@ -148,9 +151,10 @@ JSON-backed `BaseVault` implementation for CLI and local RAG workflows.
 Persists tokens to disk, so `sanitize` and `restore` can run in different processes.
 Writes use a temporary file followed by atomic replacement.
 Invalid JSON or invalid vault structure raises `ValueError`.
+New entries store `created_at` and `last_used_at`; older vault format is read automatically.
 
 Additional method:
-- `stats() -> Dict[str, object]`: returns path, total mappings, and token-type counters without original values.
+- `stats() -> Dict[str, object]`: returns path, total mappings, token-type counters, and timestamp availability without original values.
 
 ### `Patterns`
 Built-in regex patterns for email, RU phones, RU passport numbers, SNILS, INN, card numbers, online identifiers, and a broad RU full-name heuristic.

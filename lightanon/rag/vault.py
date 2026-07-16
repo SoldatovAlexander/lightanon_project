@@ -2,6 +2,7 @@ import abc
 import json
 import os
 import tempfile
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -25,6 +26,21 @@ class BaseVault(abc.ABC):
         """Store a new mapping."""
         pass
 
+    @abc.abstractmethod
+    def delete_token(self, token: str) -> bool:
+        """Delete mapping by token."""
+        pass
+
+    @abc.abstractmethod
+    def delete_value(self, value: str) -> bool:
+        """Delete mapping by real value."""
+        pass
+
+    @abc.abstractmethod
+    def clear(self) -> None:
+        """Delete all mappings."""
+        pass
+
 class MemoryVault(BaseVault):
     """
     Simple in-memory storage (Dict).
@@ -44,6 +60,24 @@ class MemoryVault(BaseVault):
         self._token_to_val[token] = value
         self._val_to_token[value] = token
 
+    def delete_token(self, token: str) -> bool:
+        value = self._token_to_val.pop(token, None)
+        if value is None:
+            return False
+        self._val_to_token.pop(value, None)
+        return True
+
+    def delete_value(self, value: str) -> bool:
+        token = self._val_to_token.pop(value, None)
+        if token is None:
+            return False
+        self._token_to_val.pop(token, None)
+        return True
+
+    def clear(self) -> None:
+        self._token_to_val.clear()
+        self._val_to_token.clear()
+
 
 class FileVault(BaseVault):
     """
@@ -53,7 +87,11 @@ class FileVault(BaseVault):
         self.path = Path(path)
         self._token_to_val: Dict[str, str] = {}
         self._val_to_token: Dict[str, str] = {}
+        self._token_metadata: Dict[str, Dict[str, str]] = {}
         self._load()
+
+    def _now(self) -> str:
+        return datetime.now(timezone.utc).isoformat()
 
     def _load(self) -> None:
         if not self.path.exists() or self.path.stat().st_size == 0:
@@ -68,6 +106,11 @@ class FileVault(BaseVault):
         if not isinstance(data, dict):
             raise ValueError("Vault JSON must be an object")
 
+        entries = data.get("entries")
+        if entries is not None:
+            self._load_entries(entries)
+            return
+
         token_to_value = data.get("token_to_value", {})
         value_to_token = data.get("value_to_token")
         if not isinstance(token_to_value, dict):
@@ -80,6 +123,36 @@ class FileVault(BaseVault):
             self._val_to_token = {value: token for token, value in self._token_to_val.items()}
         else:
             self._val_to_token = self._validate_mapping(value_to_token, "value_to_token")
+        now = self._now()
+        self._token_metadata = {
+            token: {"created_at": now, "last_used_at": now}
+            for token in self._token_to_val
+        }
+
+    def _load_entries(self, entries: Dict[str, object]) -> None:
+        if not isinstance(entries, dict):
+            raise ValueError("Vault field 'entries' must be an object")
+
+        for token, entry in entries.items():
+            if not isinstance(token, str) or not isinstance(entry, dict):
+                raise ValueError("Vault field 'entries' must map string tokens to objects")
+            value = entry.get("value")
+            created_at = entry.get("created_at")
+            last_used_at = entry.get("last_used_at")
+            if not isinstance(value, str):
+                raise ValueError("Vault entry value must be a string")
+            if created_at is not None and not isinstance(created_at, str):
+                raise ValueError("Vault entry created_at must be a string")
+            if last_used_at is not None and not isinstance(last_used_at, str):
+                raise ValueError("Vault entry last_used_at must be a string")
+
+            now = self._now()
+            self._token_to_val[token] = value
+            self._val_to_token[value] = token
+            self._token_metadata[token] = {
+                "created_at": created_at or now,
+                "last_used_at": last_used_at or created_at or now,
+            }
 
     def _validate_mapping(self, mapping: Dict[str, str], field_name: str) -> Dict[str, str]:
         for key, value in mapping.items():
@@ -89,9 +162,17 @@ class FileVault(BaseVault):
 
     def _flush(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
+        entries = {
+            token: {
+                "value": value,
+                **self._token_metadata.get(token, {}),
+            }
+            for token, value in self._token_to_val.items()
+        }
         data = {
             "token_to_value": self._token_to_val,
             "value_to_token": self._val_to_token,
+            "entries": entries,
         }
         tmp_name = None
         try:
@@ -112,14 +193,55 @@ class FileVault(BaseVault):
                 os.unlink(tmp_name)
 
     def get_value(self, token: str) -> Optional[str]:
-        return self._token_to_val.get(token)
+        value = self._token_to_val.get(token)
+        if value is not None:
+            self._touch(token)
+        return value
 
     def get_token(self, value: str) -> Optional[str]:
-        return self._val_to_token.get(value)
+        token = self._val_to_token.get(value)
+        if token is not None:
+            self._touch(token)
+        return token
 
     def save(self, token: str, value: str) -> None:
+        now = self._now()
         self._token_to_val[token] = value
         self._val_to_token[value] = token
+        self._token_metadata.setdefault(token, {"created_at": now})
+        self._token_metadata[token]["last_used_at"] = now
+        self._flush()
+
+    def _touch(self, token: str) -> None:
+        if token not in self._token_metadata:
+            now = self._now()
+            self._token_metadata[token] = {"created_at": now, "last_used_at": now}
+        else:
+            self._token_metadata[token]["last_used_at"] = self._now()
+        self._flush()
+
+    def delete_token(self, token: str) -> bool:
+        value = self._token_to_val.pop(token, None)
+        if value is None:
+            return False
+        self._val_to_token.pop(value, None)
+        self._token_metadata.pop(token, None)
+        self._flush()
+        return True
+
+    def delete_value(self, value: str) -> bool:
+        token = self._val_to_token.pop(value, None)
+        if token is None:
+            return False
+        self._token_to_val.pop(token, None)
+        self._token_metadata.pop(token, None)
+        self._flush()
+        return True
+
+    def clear(self) -> None:
+        self._token_to_val.clear()
+        self._val_to_token.clear()
+        self._token_metadata.clear()
         self._flush()
 
     def stats(self) -> Dict[str, object]:
@@ -134,4 +256,5 @@ class FileVault(BaseVault):
             "path": str(self.path),
             "total": len(self._token_to_val),
             "by_type": by_type,
+            "has_timestamps": bool(self._token_metadata),
         }

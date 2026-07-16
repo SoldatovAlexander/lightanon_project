@@ -136,7 +136,10 @@ sanitizer.add_rule("CONTRACT", r"\b\d{2}-\d{4}/\d{2}\b")
 Минимальный интерфейс `BaseVault`:
 - `get_value(token: str)`,
 - `get_token(value: str)`,
-- `save(token: str, value: str)`.
+- `save(token: str, value: str)`,
+- `delete_token(token: str)`,
+- `delete_value(value: str)`,
+- `clear()`.
 
 `FileVault` сохраняет соответствия в JSON-файл и подходит для локального CLI:
 
@@ -146,7 +149,9 @@ from lightanon.rag import FileVault, TextSanitizer
 sanitizer = TextSanitizer(vault=FileVault("vault.json"))
 ```
 
-`FileVault` валидирует структуру JSON при чтении и записывает изменения через временный файл с атомарной заменой. Метод `stats()` возвращает только счетчики, без исходных значений.
+`FileVault` валидирует структуру JSON при чтении и записывает изменения через временный файл с атомарной заменой. Новые записи содержат `created_at` и `last_used_at`. Метод `stats()` возвращает только счетчики, без исходных значений.
+
+Vault содержит исходные персональные данные. Храните его как защищаемый объект и удаляйте маппинги, когда они больше не нужны.
 
 ## CLI
 
@@ -162,11 +167,15 @@ lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
 lightanon rag inspect-vault vault.json
+lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
+lightanon rag delete-value vault.json 'ivan@example.com'
+lightanon rag clear-vault vault.json
 ```
 
 `sanitize` записывает токены в vault. `restore` использует тот же vault для замены токенов исходными значениями.
 `restore --policy` управляет раскрытием значений в финальном ответе: `restore`, `no_personal_data`, `mask`, `restore_allowed_only`.
 `scan` печатает JSON-отчет без записи в vault и без раскрытия исходных значений.
 `inspect-vault` показывает количество сохраненных маппингов и распределение по типам токенов, не раскрывая сохраненные значения.
+`delete-token`, `delete-value` и `clear-vault` управляют жизненным циклом сохраненных маппингов.
 `--profile` включает готовый профиль правил. Доступные профили: `basic`, `ru_152`, `ru_152_strict`.
 `--rules` включает только указанные встроенные правила и полезен, когда нужно отключить широкую эвристику ФИО, явно включить `INN` или обработать интернет-идентификаторы.

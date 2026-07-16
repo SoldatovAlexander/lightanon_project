@@ -20,6 +20,9 @@ lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy mask
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy restore_allowed_only --allowed-types EMAIL
 lightanon rag inspect-vault <vault.json>
+lightanon rag delete-token <vault.json> <token>
+lightanon rag delete-value <vault.json> <value>
+lightanon rag clear-vault <vault.json>
 ```
 
 ## Parameters
@@ -35,6 +38,9 @@ lightanon rag inspect-vault <vault.json>
 - `scan`: print a JSON report for detected entities without writing to a vault,
 - `restore`: restore original values from tokens,
 - `inspect-vault`: print vault statistics without revealing original values,
+- `delete-token`: delete one mapping by token,
+- `delete-value`: delete one mapping by original value,
+- `clear-vault`: delete all mappings,
 - `--vault`: JSON token-mapping file,
 - `--profile`: rule profile for `sanitize`: `basic`, `ru_152`, `ru_152_strict`,
 - `--rules`: comma-separated built-in rule list for `sanitize`,
@@ -80,6 +86,8 @@ lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
 lightanon rag inspect-vault vault.json
+lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
+lightanon rag clear-vault vault.json
 ```
 
 ## Runtime Behavior
