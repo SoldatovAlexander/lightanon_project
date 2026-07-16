@@ -101,6 +101,7 @@ def _run_rag_cli(argv):
     sanitize_parser.add_argument("output_file", help="Path to output text file")
     sanitize_parser.add_argument("--vault", required=True, help="Path to JSON token vault")
     sanitize_parser.add_argument("--encoding", default="utf-8", help="Text encoding")
+    sanitize_parser.add_argument("--ttl-seconds", type=int, help="Default TTL for newly created vault mappings")
     sanitize_parser.add_argument("--rules", help="Comma-separated built-in rules, for example EMAIL,PHONE,INN")
     sanitize_parser.add_argument(
         "--profile",
@@ -147,6 +148,9 @@ def _run_rag_cli(argv):
     clear_vault_parser = subparsers.add_parser("clear-vault", help="Delete all vault mappings")
     clear_vault_parser.add_argument("vault_file", help="Path to JSON token vault")
 
+    purge_parser = subparsers.add_parser("purge-expired", help="Delete expired vault mappings")
+    purge_parser.add_argument("vault_file", help="Path to JSON token vault")
+
     args = parser.parse_args(argv)
 
     if args.command == "inspect-vault":
@@ -181,6 +185,12 @@ def _run_rag_cli(argv):
         print("Vault cleared")
         return
 
+    if args.command == "purge-expired":
+        vault = la.rag.FileVault(args.vault_file)
+        deleted = vault.purge_expired()
+        print(f"Expired mappings deleted: {deleted}")
+        return
+
     if args.command == "scan":
         enabled_rules = _parse_rule_names(args.rules) if args.rules else None
         sanitizer = la.rag.TextSanitizer(enabled_rules=enabled_rules, profile=args.profile)
@@ -196,7 +206,7 @@ def _run_rag_cli(argv):
         result = sanitizer.deanonymize(text, policy=args.policy, allowed_entity_types=allowed_types)
     else:
         enabled_rules = _parse_rule_names(args.rules) if args.rules else None
-        vault = la.rag.FileVault(args.vault)
+        vault = la.rag.FileVault(args.vault, default_ttl_seconds=args.ttl_seconds)
         sanitizer = la.rag.TextSanitizer(vault=vault, enabled_rules=enabled_rules, profile=args.profile)
         result = sanitizer.sanitize(text)
 

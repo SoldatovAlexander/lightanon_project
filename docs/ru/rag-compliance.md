@@ -129,6 +129,7 @@ Vault хранит соответствие токенов исходным зн
 - хранить vault отдельно от публичных артефактов;
 - не коммитить vault в репозиторий;
 - ограничивать доступ к файлу;
+- задавать TTL для временных RAG-сессий;
 - удалять маппинги после завершения сценария;
 - использовать `inspect-vault`, а не просмотр файла, если нужны только счетчики.
 
@@ -138,6 +139,7 @@ Vault хранит соответствие токенов исходным зн
 lightanon rag inspect-vault vault.json
 lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
 lightanon rag delete-value vault.json 'ivan@example.com'
+lightanon rag purge-expired vault.json
 lightanon rag clear-vault vault.json
 ```
 

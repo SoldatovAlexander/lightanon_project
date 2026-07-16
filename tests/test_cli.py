@@ -155,6 +155,32 @@ def test_rag_cli_vault_lifecycle_commands(tmp_path, capsys):
     assert json.loads(vault_path.read_text(encoding="utf-8"))["token_to_value"] == {}
 
 
+def test_rag_cli_ttl_and_purge_expired(tmp_path, capsys):
+    input_path = tmp_path / "input.txt"
+    sanitized_path = tmp_path / "sanitized.txt"
+    vault_path = tmp_path / "vault.json"
+    input_path.write_text("Email: ivan@example.com", encoding="utf-8")
+
+    cli.main(
+        [
+            "rag",
+            "sanitize",
+            str(input_path),
+            str(sanitized_path),
+            "--vault",
+            str(vault_path),
+            "--ttl-seconds",
+            "0",
+        ]
+    )
+    capsys.readouterr()
+
+    cli.main(["rag", "purge-expired", str(vault_path)])
+
+    assert "Expired mappings deleted: 1" in capsys.readouterr().out
+    assert json.loads(vault_path.read_text(encoding="utf-8"))["token_to_value"] == {}
+
+
 def test_rag_cli_sanitize_with_selected_rules(tmp_path):
     input_path = tmp_path / "input.txt"
     sanitized_path = tmp_path / "sanitized.txt"

@@ -12,6 +12,7 @@ RAG text sanitization:
 
 ```bash
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json>
+lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --ttl-seconds 3600
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --profile ru_152
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules EMAIL,PHONE,INN
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
@@ -22,6 +23,7 @@ lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy res
 lightanon rag inspect-vault <vault.json>
 lightanon rag delete-token <vault.json> <token>
 lightanon rag delete-value <vault.json> <value>
+lightanon rag purge-expired <vault.json>
 lightanon rag clear-vault <vault.json>
 ```
 
@@ -40,8 +42,10 @@ lightanon rag clear-vault <vault.json>
 - `inspect-vault`: print vault statistics without revealing original values,
 - `delete-token`: delete one mapping by token,
 - `delete-value`: delete one mapping by original value,
+- `purge-expired`: delete expired mappings,
 - `clear-vault`: delete all mappings,
 - `--vault`: JSON token-mapping file,
+- `--ttl-seconds`: lifetime for newly created vault mappings, in seconds,
 - `--profile`: rule profile for `sanitize`: `basic`, `ru_152`, `ru_152_strict`,
 - `--rules`: comma-separated built-in rule list for `sanitize`,
 - `--policy`: restoration policy for `restore`: `restore`, `no_personal_data`, `mask`, `restore_allowed_only`,
@@ -78,6 +82,7 @@ lightanon data/input.parquet data/output.csv -c schema.yaml --engine polars
 
 # RAG sanitize -> restore
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --ttl-seconds 3600
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
@@ -87,6 +92,7 @@ lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy 
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
 lightanon rag inspect-vault vault.json
 lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
+lightanon rag purge-expired vault.json
 lightanon rag clear-vault vault.json
 ```
 

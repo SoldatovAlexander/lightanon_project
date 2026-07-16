@@ -22,7 +22,7 @@ class BaseVault(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def save(self, token: str, value: str) -> None:
+    def save(self, token: str, value: str, ttl_seconds: Optional[int] = None) -> None:
         """Store a new mapping."""
         pass
 
@@ -41,30 +41,67 @@ class BaseVault(abc.ABC):
         """Delete all mappings."""
         pass
 
+    @abc.abstractmethod
+    def purge_expired(self) -> int:
+        """Delete expired mappings and return deleted count."""
+        pass
+
 class MemoryVault(BaseVault):
     """
     Simple in-memory storage (Dict).
     Fast, but non-persistent. Good for single-session RAG.
     """
-    def __init__(self):
+    def __init__(self, default_ttl_seconds: Optional[int] = None):
         self._token_to_val: Dict[str, str] = {}
         self._val_to_token: Dict[str, str] = {}
+        self._token_metadata: Dict[str, Dict[str, str]] = {}
+        self.default_ttl_seconds = default_ttl_seconds
+
+    def _now(self) -> str:
+        return datetime.now(timezone.utc).isoformat()
+
+    def _expires_at(self, ttl_seconds: Optional[int]) -> Optional[str]:
+        ttl = self.default_ttl_seconds if ttl_seconds is None else ttl_seconds
+        if ttl is None:
+            return None
+        timestamp = datetime.now(timezone.utc).timestamp() + ttl
+        return datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+
+    def _is_expired(self, token: str) -> bool:
+        expires_at = self._token_metadata.get(token, {}).get("expires_at")
+        if not expires_at:
+            return False
+        return datetime.fromisoformat(expires_at) <= datetime.now(timezone.utc)
 
     def get_value(self, token: str) -> Optional[str]:
+        if self._is_expired(token):
+            self.delete_token(token)
+            return None
         return self._token_to_val.get(token)
 
     def get_token(self, value: str) -> Optional[str]:
-        return self._val_to_token.get(value)
+        token = self._val_to_token.get(value)
+        if token and self._is_expired(token):
+            self.delete_token(token)
+            return None
+        return token
 
-    def save(self, token: str, value: str) -> None:
+    def save(self, token: str, value: str, ttl_seconds: Optional[int] = None) -> None:
+        now = self._now()
         self._token_to_val[token] = value
         self._val_to_token[value] = token
+        metadata = self._token_metadata.setdefault(token, {"created_at": now})
+        metadata["last_used_at"] = now
+        expires_at = self._expires_at(ttl_seconds)
+        if expires_at is not None:
+            metadata["expires_at"] = expires_at
 
     def delete_token(self, token: str) -> bool:
         value = self._token_to_val.pop(token, None)
         if value is None:
             return False
         self._val_to_token.pop(value, None)
+        self._token_metadata.pop(token, None)
         return True
 
     def delete_value(self, value: str) -> bool:
@@ -72,26 +109,48 @@ class MemoryVault(BaseVault):
         if token is None:
             return False
         self._token_to_val.pop(token, None)
+        self._token_metadata.pop(token, None)
         return True
 
     def clear(self) -> None:
         self._token_to_val.clear()
         self._val_to_token.clear()
+        self._token_metadata.clear()
+
+    def purge_expired(self) -> int:
+        expired_tokens = [token for token in self._token_to_val if self._is_expired(token)]
+        for token in expired_tokens:
+            self.delete_token(token)
+        return len(expired_tokens)
 
 
 class FileVault(BaseVault):
     """
     JSON-backed token storage for CLI and small local RAG workflows.
     """
-    def __init__(self, path: str):
+    def __init__(self, path: str, default_ttl_seconds: Optional[int] = None):
         self.path = Path(path)
         self._token_to_val: Dict[str, str] = {}
         self._val_to_token: Dict[str, str] = {}
         self._token_metadata: Dict[str, Dict[str, str]] = {}
+        self.default_ttl_seconds = default_ttl_seconds
         self._load()
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
+
+    def _expires_at(self, ttl_seconds: Optional[int]) -> Optional[str]:
+        ttl = self.default_ttl_seconds if ttl_seconds is None else ttl_seconds
+        if ttl is None:
+            return None
+        timestamp = datetime.now(timezone.utc).timestamp() + ttl
+        return datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+
+    def _is_expired(self, token: str) -> bool:
+        expires_at = self._token_metadata.get(token, {}).get("expires_at")
+        if not expires_at:
+            return False
+        return datetime.fromisoformat(expires_at) <= datetime.now(timezone.utc)
 
     def _load(self) -> None:
         if not self.path.exists() or self.path.stat().st_size == 0:
@@ -139,12 +198,15 @@ class FileVault(BaseVault):
             value = entry.get("value")
             created_at = entry.get("created_at")
             last_used_at = entry.get("last_used_at")
+            expires_at = entry.get("expires_at")
             if not isinstance(value, str):
                 raise ValueError("Vault entry value must be a string")
             if created_at is not None and not isinstance(created_at, str):
                 raise ValueError("Vault entry created_at must be a string")
             if last_used_at is not None and not isinstance(last_used_at, str):
                 raise ValueError("Vault entry last_used_at must be a string")
+            if expires_at is not None and not isinstance(expires_at, str):
+                raise ValueError("Vault entry expires_at must be a string")
 
             now = self._now()
             self._token_to_val[token] = value
@@ -153,6 +215,8 @@ class FileVault(BaseVault):
                 "created_at": created_at or now,
                 "last_used_at": last_used_at or created_at or now,
             }
+            if expires_at:
+                self._token_metadata[token]["expires_at"] = expires_at
 
     def _validate_mapping(self, mapping: Dict[str, str], field_name: str) -> Dict[str, str]:
         for key, value in mapping.items():
@@ -193,6 +257,9 @@ class FileVault(BaseVault):
                 os.unlink(tmp_name)
 
     def get_value(self, token: str) -> Optional[str]:
+        if self._is_expired(token):
+            self.delete_token(token)
+            return None
         value = self._token_to_val.get(token)
         if value is not None:
             self._touch(token)
@@ -200,16 +267,22 @@ class FileVault(BaseVault):
 
     def get_token(self, value: str) -> Optional[str]:
         token = self._val_to_token.get(value)
+        if token is not None and self._is_expired(token):
+            self.delete_token(token)
+            return None
         if token is not None:
             self._touch(token)
         return token
 
-    def save(self, token: str, value: str) -> None:
+    def save(self, token: str, value: str, ttl_seconds: Optional[int] = None) -> None:
         now = self._now()
         self._token_to_val[token] = value
         self._val_to_token[value] = token
         self._token_metadata.setdefault(token, {"created_at": now})
         self._token_metadata[token]["last_used_at"] = now
+        expires_at = self._expires_at(ttl_seconds)
+        if expires_at is not None:
+            self._token_metadata[token]["expires_at"] = expires_at
         self._flush()
 
     def _touch(self, token: str) -> None:
@@ -244,7 +317,19 @@ class FileVault(BaseVault):
         self._token_metadata.clear()
         self._flush()
 
+    def purge_expired(self) -> int:
+        expired_tokens = [token for token in self._token_to_val if self._is_expired(token)]
+        for token in expired_tokens:
+            value = self._token_to_val.pop(token, None)
+            if value is not None:
+                self._val_to_token.pop(value, None)
+            self._token_metadata.pop(token, None)
+        if expired_tokens:
+            self._flush()
+        return len(expired_tokens)
+
     def stats(self) -> Dict[str, object]:
+        self.purge_expired()
         by_type: Dict[str, int] = {}
         for token in self._token_to_val:
             if token.startswith("[") and token.endswith("]") and "_" in token:
@@ -257,4 +342,5 @@ class FileVault(BaseVault):
             "total": len(self._token_to_val),
             "by_type": by_type,
             "has_timestamps": bool(self._token_metadata),
+            "has_expiration": any("expires_at" in metadata for metadata in self._token_metadata.values()),
         }

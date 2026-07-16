@@ -127,6 +127,7 @@ Recommended controls:
 - keep vault files out of public artifacts;
 - do not commit vault files to source control;
 - restrict file access;
+- set TTL for temporary RAG sessions;
 - delete mappings when they are no longer needed;
 - use `inspect-vault` for counters instead of reading raw vault contents.
 
@@ -136,6 +137,7 @@ Lifecycle commands:
 lightanon rag inspect-vault vault.json
 lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
 lightanon rag delete-value vault.json 'ivan@example.com'
+lightanon rag purge-expired vault.json
 lightanon rag clear-vault vault.json
 ```
 

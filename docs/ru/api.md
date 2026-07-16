@@ -142,24 +142,25 @@ restored = sanitizer.deanonymize(answer)
 Абстрактный интерфейс хранилища токенов:
 - `get_value(token: str)`
 - `get_token(value: str)`
-- `save(token: str, value: str)`
+- `save(token: str, value: str, ttl_seconds: Optional[int] = None)`
 - `delete_token(token: str) -> bool`
 - `delete_value(value: str) -> bool`
 - `clear() -> None`
+- `purge_expired() -> int`
 
 ### `MemoryVault`
 In-memory реализация `BaseVault`.
 Подходит для одного процесса/сессии, но не сохраняет данные между перезапусками.
 
-### `FileVault(path: str)`
+### `FileVault(path: str, default_ttl_seconds: Optional[int] = None)`
 JSON-backed реализация `BaseVault` для CLI и локальных RAG-сценариев.
 Сохраняет токены на диск, поэтому `sanitize` и `restore` могут выполняться разными процессами.
 Запись выполняется через временный файл с последующей атомарной заменой.
 Некорректный JSON или неверная структура vault вызывают `ValueError`.
-Новые записи сохраняют `created_at` и `last_used_at`; старый формат vault читается автоматически.
+Новые записи сохраняют `created_at`, `last_used_at` и, если задан TTL, `expires_at`; старый формат vault читается автоматически.
 
 Дополнительный метод:
-- `stats() -> Dict[str, object]`: возвращает путь, общее число маппингов, счетчики по типам токенов и наличие timestamps без исходных значений.
+- `stats() -> Dict[str, object]`: возвращает путь, общее число маппингов, счетчики по типам токенов и наличие timestamps/expiration без исходных значений.
 
 ### `Patterns`
 Набор встроенных regex-паттернов для email, телефонов РФ, паспорта РФ, СНИЛС, ИНН, карт, интернет-идентификаторов и эвристики ФИО.

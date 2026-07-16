@@ -61,6 +61,7 @@ print(engine.generate_report())
 lightanon input.csv output.parquet -c schema.yaml --engine pandas
 lightanon input.parquet output.csv -c schema.yaml --engine polars
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --ttl-seconds 3600
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE

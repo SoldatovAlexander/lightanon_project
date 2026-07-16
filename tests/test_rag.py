@@ -463,6 +463,14 @@ def test_memory_vault_lifecycle_methods():
     assert vault.get_token("anna@example.com") is None
 
 
+def test_memory_vault_ttl_expiration():
+    vault = MemoryVault(default_ttl_seconds=0)
+    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+
+    assert vault.get_value("[EMAIL_aaaaaaaa]") is None
+    assert vault.get_token("ivan@example.com") is None
+
+
 def test_file_vault_lifecycle_methods_persist(tmp_path):
     vault_path = tmp_path / "vault.json"
     vault = FileVault(str(vault_path))
@@ -479,6 +487,29 @@ def test_file_vault_lifecycle_methods_persist(tmp_path):
     restored_vault.save("[EMAIL_cccccccc]", "anna@example.com")
     restored_vault.clear()
     assert FileVault(str(vault_path)).stats()["total"] == 0
+
+
+def test_file_vault_ttl_expiration_and_purge(tmp_path):
+    vault_path = tmp_path / "vault.json"
+    vault = FileVault(str(vault_path), default_ttl_seconds=0)
+    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+
+    assert FileVault(str(vault_path)).purge_expired() == 1
+    restored_vault = FileVault(str(vault_path))
+    assert restored_vault.get_value("[EMAIL_aaaaaaaa]") is None
+    assert restored_vault.get_token("ivan@example.com") is None
+
+
+def test_file_vault_future_ttl_remains_active(tmp_path):
+    vault_path = tmp_path / "vault.json"
+    vault = FileVault(str(vault_path), default_ttl_seconds=3600)
+    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+
+    restored_vault = FileVault(str(vault_path))
+
+    assert restored_vault.get_value("[EMAIL_aaaaaaaa]") == "ivan@example.com"
+    assert restored_vault.purge_expired() == 0
+    assert restored_vault.stats()["has_expiration"] is True
 
 
 def test_file_vault_writes_entries_with_timestamps(tmp_path):
