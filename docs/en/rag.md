@@ -24,6 +24,16 @@ print(sanitized)
 print(restored)
 ```
 
+For safer output, control restoration with policies:
+
+```python
+sanitizer.deanonymize(response, policy="no_personal_data")
+sanitizer.deanonymize(response, policy="mask")
+sanitizer.deanonymize(response, policy="restore_allowed_only", allowed_entity_types=["EMAIL"])
+```
+
+The default `restore` policy preserves existing behavior and restores all known tokens.
+
 ## Built-in Patterns
 Default `TextSanitizer` rules include:
 - email,
@@ -149,10 +159,13 @@ lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules EMAIL,
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag scan input.txt --profile ru_152
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
 lightanon rag inspect-vault vault.json
 ```
 
 `sanitize` writes tokens to the vault. `restore` uses the same vault to replace tokens with original values.
+`restore --policy` controls value disclosure in the final answer: `restore`, `no_personal_data`, `mask`, `restore_allowed_only`.
 `scan` prints a JSON report without writing to the vault and without revealing original values.
 `inspect-vault` prints saved mapping counts and token-type distribution without revealing stored values.
 `--profile` enables a built-in rule profile. Available profiles: `basic`, `ru_152`, `ru_152_strict`.

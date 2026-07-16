@@ -42,6 +42,70 @@ def test_rag_cli_sanitize_and_restore(tmp_path):
     assert restored_path.read_text(encoding="utf-8") == original
 
 
+def test_rag_cli_restore_mask_policy(tmp_path):
+    input_path = tmp_path / "input.txt"
+    sanitized_path = tmp_path / "sanitized.txt"
+    restored_path = tmp_path / "restored.txt"
+    vault_path = tmp_path / "vault.json"
+    input_path.write_text("Email: ivan@example.com", encoding="utf-8")
+
+    cli.main(["rag", "sanitize", str(input_path), str(sanitized_path), "--vault", str(vault_path)])
+    cli.main(
+        [
+            "rag",
+            "restore",
+            str(sanitized_path),
+            str(restored_path),
+            "--vault",
+            str(vault_path),
+            "--policy",
+            "mask",
+        ]
+    )
+
+    assert restored_path.read_text(encoding="utf-8") == "Email: [EMAIL]"
+
+
+def test_rag_cli_restore_allowed_types_policy(tmp_path):
+    input_path = tmp_path / "input.txt"
+    sanitized_path = tmp_path / "sanitized.txt"
+    restored_path = tmp_path / "restored.txt"
+    vault_path = tmp_path / "vault.json"
+    input_path.write_text("Email: ivan@example.com. ИНН 7707083893.", encoding="utf-8")
+
+    cli.main(
+        [
+            "rag",
+            "sanitize",
+            str(input_path),
+            str(sanitized_path),
+            "--vault",
+            str(vault_path),
+            "--profile",
+            "ru_152",
+        ]
+    )
+    cli.main(
+        [
+            "rag",
+            "restore",
+            str(sanitized_path),
+            str(restored_path),
+            "--vault",
+            str(vault_path),
+            "--policy",
+            "restore_allowed_only",
+            "--allowed-types",
+            "EMAIL",
+        ]
+    )
+
+    restored = restored_path.read_text(encoding="utf-8")
+    assert "ivan@example.com" in restored
+    assert "7707083893" not in restored
+    assert "[INN_" in restored
+
+
 def test_rag_cli_inspect_vault_hides_values(tmp_path, capsys):
     input_path = tmp_path / "input.txt"
     sanitized_path = tmp_path / "sanitized.txt"

@@ -66,6 +66,7 @@ lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag scan prompt.txt --profile ru_152
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
 lightanon rag inspect-vault vault.json
 ```
 

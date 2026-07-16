@@ -108,7 +108,7 @@ Main methods:
 - `sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]`
 - `scan(text: str) -> Dict[str, object]`
 - `sanitize_with_report(text: str) -> Tuple[str, Dict[str, object]]`
-- `deanonymize(text: str) -> str`
+- `deanonymize(text: str, policy: str = "restore", allowed_entity_types=None) -> str`
 - `add_rule(name: str, pattern: str)`
 
 Built-in rules: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`.
@@ -131,6 +131,7 @@ restored = sanitizer.deanonymize(answer)
 
 `scan(...)` detects entities without replacing text or writing to the vault. The report contains type counters and risk level, but not original values.
 `sanitize_with_report(...)` returns sanitized text plus a report with entities before processing and residual entities after processing.
+`deanonymize(...)` supports restoration policies: `restore` restores all values, `no_personal_data` leaves tokens unchanged, `mask` replaces tokens with `[TYPE]`, and `restore_allowed_only` restores only types listed in `allowed_entity_types`.
 
 ### `BaseVault`
 Abstract token-storage interface:

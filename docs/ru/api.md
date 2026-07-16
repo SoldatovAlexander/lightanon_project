@@ -108,7 +108,7 @@ RAG-блок не является набором `BaseRule` для колоно
 - `sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]`
 - `scan(text: str) -> Dict[str, object]`
 - `sanitize_with_report(text: str) -> Tuple[str, Dict[str, object]]`
-- `deanonymize(text: str) -> str`
+- `deanonymize(text: str, policy: str = "restore", allowed_entity_types=None) -> str`
 - `add_rule(name: str, pattern: str)`
 
 Встроенные правила: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`.
@@ -131,6 +131,7 @@ restored = sanitizer.deanonymize(answer)
 
 `scan(...)` ищет сущности без замены текста и без записи в vault. Отчет содержит счетчики по типам и уровень риска, но не исходные значения.
 `sanitize_with_report(...)` возвращает очищенный текст и отчет с сущностями до обработки и остаточными сущностями после обработки.
+`deanonymize(...)` поддерживает политики восстановления: `restore` восстанавливает все значения, `no_personal_data` оставляет токены, `mask` заменяет токены на `[TYPE]`, `restore_allowed_only` восстанавливает только типы из `allowed_entity_types`.
 
 ### `BaseVault`
 Абстрактный интерфейс хранилища токенов:

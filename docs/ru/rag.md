@@ -24,6 +24,16 @@ print(sanitized)
 print(restored)
 ```
 
+Для безопасного вывода можно управлять восстановлением:
+
+```python
+sanitizer.deanonymize(response, policy="no_personal_data")
+sanitizer.deanonymize(response, policy="mask")
+sanitizer.deanonymize(response, policy="restore_allowed_only", allowed_entity_types=["EMAIL"])
+```
+
+Политика `restore` сохраняет прежнее поведение и восстанавливает все известные токены.
+
 ## Встроенные паттерны
 По умолчанию используются регулярные выражения для:
 - email,
@@ -149,10 +159,13 @@ lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules EMAIL,
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag scan input.txt --profile ru_152
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
 lightanon rag inspect-vault vault.json
 ```
 
 `sanitize` записывает токены в vault. `restore` использует тот же vault для замены токенов исходными значениями.
+`restore --policy` управляет раскрытием значений в финальном ответе: `restore`, `no_personal_data`, `mask`, `restore_allowed_only`.
 `scan` печатает JSON-отчет без записи в vault и без раскрытия исходных значений.
 `inspect-vault` показывает количество сохраненных маппингов и распределение по типам токенов, не раскрывая сохраненные значения.
 `--profile` включает готовый профиль правил. Доступные профили: `basic`, `ru_152`, `ru_152_strict`.

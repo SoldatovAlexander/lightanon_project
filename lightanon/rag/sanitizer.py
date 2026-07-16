@@ -240,12 +240,23 @@ class TextSanitizer:
             return {self._sanitize_metadata_value(item) for item in value}
         return value
 
-    def deanonymize(self, text: str) -> str:
+    def deanonymize(
+        self,
+        text: str,
+        policy: str = "restore",
+        allowed_entity_types: Optional[Iterable[str]] = None,
+    ) -> str:
         """
         Restores real data from tokens.
         Input: "Hello [PERSON_a1]"
         Output: "Hello Ivan"
         """
+        allowed_types = None
+        if allowed_entity_types is not None:
+            allowed_types = {self._normalize_entity_type(entity_type) for entity_type in allowed_entity_types}
+        if policy not in {"restore", "no_personal_data", "mask", "restore_allowed_only"}:
+            raise ValueError(f"Unknown deanonymization policy: {policy}")
+
         restored_text = text
         # Regex to find our tokens: [TYPE_hexcode]
         token_pattern = r'\[[A-Z][A-Z0-9_]*_[a-f0-9]{8}\]'
@@ -253,8 +264,20 @@ class TextSanitizer:
         matches = list(set(re.findall(token_pattern, text)))
 
         for token in matches:
+            entity_type = self._entity_type_from_token(token)
+            if policy == "no_personal_data":
+                continue
+            if policy == "mask":
+                restored_text = restored_text.replace(token, f"[{entity_type}]")
+                continue
+            if policy == "restore_allowed_only" and (allowed_types is None or entity_type not in allowed_types):
+                continue
+
             real_value = self.vault.get_value(token)
             if real_value:
                 restored_text = restored_text.replace(token, real_value)
 
         return restored_text
+
+    def _entity_type_from_token(self, token: str) -> str:
+        return token[1:-1].rsplit("_", 1)[0]

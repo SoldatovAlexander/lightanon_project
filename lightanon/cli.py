@@ -114,6 +114,13 @@ def _run_rag_cli(argv):
     restore_parser.add_argument("output_file", help="Path to output text file")
     restore_parser.add_argument("--vault", required=True, help="Path to JSON token vault")
     restore_parser.add_argument("--encoding", default="utf-8", help="Text encoding")
+    restore_parser.add_argument(
+        "--policy",
+        choices=["restore", "no_personal_data", "mask", "restore_allowed_only"],
+        default="restore",
+        help="Deanonymization policy",
+    )
+    restore_parser.add_argument("--allowed-types", help="Comma-separated entity types for restore_allowed_only")
 
     scan_parser = subparsers.add_parser("scan", help="Detect RAG entities without writing a vault")
     scan_parser.add_argument("input_file", help="Path to input text file")
@@ -156,7 +163,8 @@ def _run_rag_cli(argv):
     if args.command == "restore":
         vault = la.rag.FileVault(args.vault)
         sanitizer = la.rag.TextSanitizer(vault=vault)
-        result = sanitizer.deanonymize(text)
+        allowed_types = _parse_rule_names(args.allowed_types) if args.allowed_types else None
+        result = sanitizer.deanonymize(text, policy=args.policy, allowed_entity_types=allowed_types)
     else:
         enabled_rules = _parse_rule_names(args.rules) if args.rules else None
         vault = la.rag.FileVault(args.vault)

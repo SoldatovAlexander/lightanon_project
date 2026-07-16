@@ -46,6 +46,48 @@ def test_deanonymize_restores_original_values():
     assert restored == f"Подтверждаю: {original}"
 
 
+def test_deanonymize_no_personal_data_policy_leaves_tokens():
+    sanitizer = TextSanitizer()
+    clean = sanitizer.sanitize("Email: ivan@example.com")
+
+    restored = sanitizer.deanonymize(clean, policy="no_personal_data")
+
+    assert restored == clean
+    assert "ivan@example.com" not in restored
+
+
+def test_deanonymize_mask_policy_replaces_tokens_with_entity_labels():
+    sanitizer = TextSanitizer()
+    clean = sanitizer.sanitize("Email: ivan@example.com")
+
+    restored = sanitizer.deanonymize(clean, policy="mask")
+
+    assert restored == "Email: [EMAIL]"
+    assert "ivan@example.com" not in restored
+
+
+def test_deanonymize_restore_allowed_only_policy():
+    sanitizer = TextSanitizer(profile="ru_152")
+    clean = sanitizer.sanitize("Email: ivan@example.com. ИНН 7707083893.")
+
+    restored = sanitizer.deanonymize(
+        clean,
+        policy="restore_allowed_only",
+        allowed_entity_types=["EMAIL"],
+    )
+
+    assert "ivan@example.com" in restored
+    assert "7707083893" not in restored
+    assert re.search(r"\[INN_[a-f0-9]{8}\]", restored)
+
+
+def test_deanonymize_unknown_policy_fails_fast():
+    sanitizer = TextSanitizer()
+
+    with pytest.raises(ValueError, match="Unknown deanonymization policy"):
+        sanitizer.deanonymize("[EMAIL_aaaaaaaa]", policy="unknown")
+
+
 def test_same_value_reuses_same_token():
     sanitizer = TextSanitizer()
 

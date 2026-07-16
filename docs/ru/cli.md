@@ -17,6 +17,8 @@ lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules EMA
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag scan <input.txt> --profile ru_152
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
+lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy mask
+lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy restore_allowed_only --allowed-types EMAIL
 lightanon rag inspect-vault <vault.json>
 ```
 
@@ -36,6 +38,8 @@ lightanon rag inspect-vault <vault.json>
 - `--vault`: JSON-файл с соответствиями токенов,
 - `--profile`: профиль правил для `sanitize`: `basic`, `ru_152`, `ru_152_strict`,
 - `--rules`: список встроенных правил для `sanitize`, разделенный запятыми,
+- `--policy`: политика восстановления для `restore`: `restore`, `no_personal_data`, `mask`, `restore_allowed_only`,
+- `--allowed-types`: список типов для `restore_allowed_only`, разделенный запятыми,
 - `--encoding`: кодировка текстовых файлов, по умолчанию `utf-8`.
 
 ## Формат YAML
@@ -73,6 +77,8 @@ lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag scan prompt.txt --profile ru_152
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
 lightanon rag inspect-vault vault.json
 ```
 
