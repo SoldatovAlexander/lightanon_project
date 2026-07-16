@@ -139,6 +139,17 @@ class TextSanitizer:
         Output: "Call [PERSON_a1] at [PHONE_b2]..."
         """
         replacements = []
+        for start, end, entity_type, real_value in self._find_entities(text):
+            token = self._get_or_create_token(entity_type, real_value)
+            replacements.append((start, end, token))
+
+        if not replacements:
+            return text
+
+        return self._apply_replacements(text, replacements)
+
+    def _find_entities(self, text: str) -> List[Tuple[int, int, str, str]]:
+        replacements = []
         occupied_spans = []
 
         for entity_type, pattern in self.rules:
@@ -147,13 +158,12 @@ class TextSanitizer:
                 if start == end or self._overlaps_existing_span(start, end, occupied_spans):
                     continue
                 real_value = match.group()
-                token = self._get_or_create_token(entity_type, real_value)
-                replacements.append((start, end, token))
+                replacements.append((start, end, entity_type, real_value))
                 occupied_spans.append((start, end))
 
-        if not replacements:
-            return text
+        return replacements
 
+    def _apply_replacements(self, text: str, replacements: List[Tuple[int, int, str]]) -> str:
         sanitized_parts = []
         current_pos = 0
         for start, end, token in sorted(replacements):
@@ -166,6 +176,47 @@ class TextSanitizer:
 
     def _overlaps_existing_span(self, start: int, end: int, spans: List[Tuple[int, int]]) -> bool:
         return any(start < existing_end and existing_start < end for existing_start, existing_end in spans)
+
+    def scan(self, text: str) -> Dict[str, object]:
+        """
+        Detect entities without modifying text or writing to the vault.
+        """
+        entities = self._entity_counts(text)
+        return {
+            "entities": entities,
+            "total": sum(entities.values()),
+            "residual_risk": self._risk_level(entities),
+        }
+
+    def sanitize_with_report(self, text: str) -> Tuple[str, Dict[str, object]]:
+        """
+        Sanitize text and report entities detected before and after sanitization.
+        """
+        before = self.scan(text)
+        clean = self.sanitize(text)
+        residual_entities = self._entity_counts(clean)
+        report = {
+            "entities": before["entities"],
+            "total": before["total"],
+            "residual_entities": residual_entities,
+            "residual_total": sum(residual_entities.values()),
+            "residual_risk": self._risk_level(residual_entities),
+        }
+        return clean, report
+
+    def _entity_counts(self, text: str) -> Dict[str, int]:
+        counts: Dict[str, int] = {}
+        for _, _, entity_type, _ in self._find_entities(text):
+            counts[entity_type] = counts.get(entity_type, 0) + 1
+        return counts
+
+    def _risk_level(self, entities: Dict[str, int]) -> str:
+        total = sum(entities.values())
+        if total == 0:
+            return "low"
+        if total <= 2:
+            return "medium"
+        return "high"
 
     def sanitize_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """

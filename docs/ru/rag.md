@@ -86,6 +86,27 @@ clean_metadata = sanitizer.sanitize_metadata(metadata)
 
 `sanitize_metadata(...)` рекурсивно обрабатывает строковые значения внутри `dict`, `list`, `tuple` и `set`. Нестроковые значения сохраняются.
 
+## Scan и отчет
+
+`scan(...)` проверяет текст без замены и без записи в vault:
+
+```python
+sanitizer = TextSanitizer(profile="ru_152")
+report = sanitizer.scan("Email ivan@example.com, ИНН 7707083893")
+```
+
+Пример отчета:
+
+```python
+{
+    "entities": {"EMAIL": 1, "INN": 1},
+    "total": 2,
+    "residual_risk": "medium",
+}
+```
+
+`sanitize_with_report(...)` возвращает очищенный текст и отчет, где отдельно показаны найденные сущности до обработки и остаточные сущности после обработки.
+
 ## Кастомное правило
 
 ```python
@@ -126,11 +147,13 @@ lightanon rag sanitize input.txt sanitized.txt --vault vault.json
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --profile ru_152
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
+lightanon rag scan input.txt --profile ru_152
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag inspect-vault vault.json
 ```
 
 `sanitize` записывает токены в vault. `restore` использует тот же vault для замены токенов исходными значениями.
+`scan` печатает JSON-отчет без записи в vault и без раскрытия исходных значений.
 `inspect-vault` показывает количество сохраненных маппингов и распределение по типам токенов, не раскрывая сохраненные значения.
 `--profile` включает готовый профиль правил. Доступные профили: `basic`, `ru_152`, `ru_152_strict`.
 `--rules` включает только указанные встроенные правила и полезен, когда нужно отключить широкую эвристику ФИО, явно включить `INN` или обработать интернет-идентификаторы.

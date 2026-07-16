@@ -276,6 +276,41 @@ def test_sanitize_metadata_requires_dict():
         sanitizer.sanitize_metadata(["ivan@example.com"])
 
 
+def test_scan_reports_entity_counts_without_values():
+    sanitizer = TextSanitizer(profile="ru_152")
+
+    report = sanitizer.scan("Email ivan@example.com, ИНН 7707083893, Telegram: @ivanov_dev.")
+
+    assert report["entities"] == {"ONLINE_ACCOUNT": 1, "EMAIL": 1, "INN": 1}
+    assert report["total"] == 3
+    assert report["residual_risk"] == "high"
+    assert "ivan@example.com" not in str(report)
+    assert "7707083893" not in str(report)
+
+
+def test_scan_does_not_write_to_vault():
+    vault = MemoryVault()
+    sanitizer = TextSanitizer(vault=vault, enabled_rules=["EMAIL"])
+
+    sanitizer.scan("Email ivan@example.com")
+
+    assert vault.get_token("ivan@example.com") is None
+
+
+def test_sanitize_with_report_includes_residual_scan():
+    sanitizer = TextSanitizer(enabled_rules=["EMAIL"])
+
+    clean, report = sanitizer.sanitize_with_report("Email ivan@example.com, phone +7 900 123-45-67.")
+
+    assert "ivan@example.com" not in clean
+    assert "+7 900 123-45-67" in clean
+    assert report["entities"] == {"EMAIL": 1}
+    assert report["total"] == 1
+    assert report["residual_entities"] == {}
+    assert report["residual_total"] == 0
+    assert report["residual_risk"] == "low"
+
+
 def test_file_vault_persists_mappings(tmp_path):
     vault_path = tmp_path / "vault.json"
     vault = FileVault(str(vault_path))

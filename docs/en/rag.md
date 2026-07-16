@@ -86,6 +86,27 @@ clean_metadata = sanitizer.sanitize_metadata(metadata)
 
 `sanitize_metadata(...)` recursively sanitizes string values inside `dict`, `list`, `tuple`, and `set` containers. Non-string values are preserved.
 
+## Scan and Report
+
+`scan(...)` checks text without replacement and without writing to the vault:
+
+```python
+sanitizer = TextSanitizer(profile="ru_152")
+report = sanitizer.scan("Email ivan@example.com, INN 7707083893")
+```
+
+Example report:
+
+```python
+{
+    "entities": {"EMAIL": 1, "INN": 1},
+    "total": 2,
+    "residual_risk": "medium",
+}
+```
+
+`sanitize_with_report(...)` returns sanitized text and a report with entities found before processing and residual entities after processing.
+
 ## Custom Pattern
 
 ```python
@@ -126,11 +147,13 @@ lightanon rag sanitize input.txt sanitized.txt --vault vault.json
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --profile ru_152
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
+lightanon rag scan input.txt --profile ru_152
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag inspect-vault vault.json
 ```
 
 `sanitize` writes tokens to the vault. `restore` uses the same vault to replace tokens with original values.
+`scan` prints a JSON report without writing to the vault and without revealing original values.
 `inspect-vault` prints saved mapping counts and token-type distribution without revealing stored values.
 `--profile` enables a built-in rule profile. Available profiles: `basic`, `ru_152`, `ru_152_strict`.
 `--rules` enables only the listed built-in rules and is useful when you need to disable the broad name heuristic, explicitly enable `INN`, or process online identifiers.

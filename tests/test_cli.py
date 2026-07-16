@@ -1,3 +1,5 @@
+import json
+
 from lightanon import cli
 
 
@@ -149,3 +151,17 @@ def test_rag_cli_rules_override_profile(tmp_path):
     assert "7707083893" in sanitized
     assert "[EMAIL_" in sanitized
     assert "[INN_" not in sanitized
+
+
+def test_rag_cli_scan_prints_report_without_values(tmp_path, capsys):
+    input_path = tmp_path / "input.txt"
+    input_path.write_text("Email: ivan@example.com. ИНН 7707083893.", encoding="utf-8")
+
+    cli.main(["rag", "scan", str(input_path), "--profile", "ru_152"])
+
+    output = capsys.readouterr().out
+    report = json.loads(output)
+    assert report["entities"] == {"EMAIL": 1, "INN": 1}
+    assert report["total"] == 2
+    assert "ivan@example.com" not in output
+    assert "7707083893" not in output

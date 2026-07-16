@@ -15,6 +15,7 @@ lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json>
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --profile ru_152
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules EMAIL,PHONE,INN
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
+lightanon rag scan <input.txt> --profile ru_152
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
 lightanon rag inspect-vault <vault.json>
 ```
@@ -29,6 +30,7 @@ lightanon rag inspect-vault <vault.json>
 
 ### RAG
 - `sanitize`: replace sensitive values with reversible tokens,
+- `scan`: print a JSON report for detected entities without writing to a vault,
 - `restore`: restore original values from tokens,
 - `inspect-vault`: print vault statistics without revealing original values,
 - `--vault`: JSON token-mapping file,
@@ -69,6 +71,7 @@ lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
+lightanon rag scan prompt.txt --profile ru_152
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag inspect-vault vault.json
 ```

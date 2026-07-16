@@ -106,6 +106,8 @@ RAG-блок не является набором `BaseRule` для колоно
 Основные методы:
 - `sanitize(text: str) -> str`
 - `sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]`
+- `scan(text: str) -> Dict[str, object]`
+- `sanitize_with_report(text: str) -> Tuple[str, Dict[str, object]]`
 - `deanonymize(text: str) -> str`
 - `add_rule(name: str, pattern: str)`
 
@@ -126,6 +128,9 @@ restored = sanitizer.deanonymize(answer)
 ```
 
 `sanitize_metadata(...)` рекурсивно обрабатывает строковые значения в `dict`, `list`, `tuple` и `set`, сохраняя нестроковые значения. Это полезно для RAG-документов, где персональные данные могут находиться в `source_url`, `author`, `tags`, `file_path` и других metadata-полях.
+
+`scan(...)` ищет сущности без замены текста и без записи в vault. Отчет содержит счетчики по типам и уровень риска, но не исходные значения.
+`sanitize_with_report(...)` возвращает очищенный текст и отчет с сущностями до обработки и остаточными сущностями после обработки.
 
 ### `BaseVault`
 Абстрактный интерфейс хранилища токенов:

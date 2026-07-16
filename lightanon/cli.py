@@ -1,4 +1,5 @@
 import argparse
+import json
 import sys
 from pathlib import Path
 
@@ -114,6 +115,17 @@ def _run_rag_cli(argv):
     restore_parser.add_argument("--vault", required=True, help="Path to JSON token vault")
     restore_parser.add_argument("--encoding", default="utf-8", help="Text encoding")
 
+    scan_parser = subparsers.add_parser("scan", help="Detect RAG entities without writing a vault")
+    scan_parser.add_argument("input_file", help="Path to input text file")
+    scan_parser.add_argument("--encoding", default="utf-8", help="Text encoding")
+    scan_parser.add_argument(
+        "--profile",
+        choices=sorted(la.rag.TextSanitizer.PROFILES),
+        default="basic",
+        help="Built-in RAG rule profile",
+    )
+    scan_parser.add_argument("--rules", help="Comma-separated built-in rules, for example EMAIL,PHONE,INN")
+
     inspect_parser = subparsers.add_parser("inspect-vault", help="Print vault statistics without revealing values")
     inspect_parser.add_argument("vault_file", help="Path to JSON token vault")
 
@@ -133,17 +145,23 @@ def _run_rag_cli(argv):
             print("Types: none")
         return
 
-    text = _read_text(args.input_file, args.encoding)
+    if args.command == "scan":
+        enabled_rules = _parse_rule_names(args.rules) if args.rules else None
+        sanitizer = la.rag.TextSanitizer(enabled_rules=enabled_rules, profile=args.profile)
+        text = _read_text(args.input_file, args.encoding)
+        print(json.dumps(sanitizer.scan(text), ensure_ascii=False, indent=2))
+        return
 
-    if args.command == "sanitize":
+    text = _read_text(args.input_file, args.encoding)
+    if args.command == "restore":
+        vault = la.rag.FileVault(args.vault)
+        sanitizer = la.rag.TextSanitizer(vault=vault)
+        result = sanitizer.deanonymize(text)
+    else:
         enabled_rules = _parse_rule_names(args.rules) if args.rules else None
         vault = la.rag.FileVault(args.vault)
         sanitizer = la.rag.TextSanitizer(vault=vault, enabled_rules=enabled_rules, profile=args.profile)
         result = sanitizer.sanitize(text)
-    else:
-        vault = la.rag.FileVault(args.vault)
-        sanitizer = la.rag.TextSanitizer(vault=vault)
-        result = sanitizer.deanonymize(text)
 
     _write_text(args.output_file, result, args.encoding)
     print(f"Saved to {args.output_file}")
