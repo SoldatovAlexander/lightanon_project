@@ -55,6 +55,30 @@ lightanon rag sanitize input.txt output.txt --vault vault.json --rules ONLINE_AC
 - добавляет технические идентификаторы: `IP_ADDRESS`, `COOKIE_ID`, `DEVICE_ID`, `USER_ID`;
 - полезен для логов, тикетов поддержки, веб-аналитики и выгрузок из систем.
 
+## Реквизиты компании и контрагентов
+
+Помимо ПД, RAG-контекст может содержать сведения, по которым определяется сама компания или ее контрагенты: полное и краткое название, ИНН, КПП, ОГРН, ОКПО, юридический адрес, БИК, расчетные и корреспондентские счета. Для сценария, где компания работает с облачной моделью, но не хочет выпускать такие сведения за свой контур, включайте `business_mode` поверх выбранного профиля ПД:
+
+```python
+from lightanon.rag import TextSanitizer
+
+sanitizer = TextSanitizer(profile="ru_152", business_mode="company")
+clean = sanitizer.sanitize('Компания ООО "Ромашка", ИНН 7707083893, КПП 770701001')
+```
+
+Режимы:
+- `company`: скрывает реквизиты компании;
+- `company_and_counterparties`: дополнительно скрывает компактные блоки реквизитов контрагентов, поставщиков, подрядчиков, покупателей, заказчиков, исполнителей и клиентов.
+
+CLI:
+
+```bash
+lightanon rag sanitize input.txt output.txt --vault vault.json --profile ru_152 --business-mode company
+lightanon rag sanitize input.txt output.txt --vault vault.json --profile ru_152 --business-mode company_and_counterparties
+```
+
+Этот режим не заменяет контроль ПД, а добавляется к нему. Для проверки перед отправкой во внешний LLM используйте тот же режим в `scan`.
+
 ## Metadata RAG-документов
 
 Персональные данные часто находятся не в тексте чанка, а в metadata:
@@ -98,7 +122,7 @@ clean, report = sanitizer.sanitize_with_report(text)
 CLI:
 
 ```bash
-lightanon rag scan input.txt --profile ru_152
+lightanon rag scan input.txt --profile ru_152 --business-mode company
 ```
 
 Отчет не раскрывает исходные значения, но показывает типы и количество найденных сущностей.
@@ -147,6 +171,7 @@ lightanon rag clear-vault vault.json
 
 Перед отправкой RAG-контекста в LLM:
 - выбрать профиль `ru_152` или `ru_152_strict`;
+- включить `business_mode`, если нужно скрыть реквизиты компании или контрагентов;
 - обработать текст через `sanitize`;
 - обработать metadata через `sanitize_metadata`;
 - проверить результат через `scan` или `sanitize_with_report`;

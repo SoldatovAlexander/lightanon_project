@@ -19,6 +19,7 @@ High-performance data anonymization for ML pipelines and compliance workflows.
 - Core rules: `Hash`, `Mask`, `GaussianNoise`, `Generalize`.
 - Financial rules: `MultiplicativeNoise`, `TopCoding`, `CreditCardMask`.
 - Separate RAG block for reversible text sanitization before LLM calls.
+- Optional RAG protection for company and counterparty requisites before cloud LLM calls.
 - Compliance report generation from applied transformations.
 
 ## Installation
@@ -63,6 +64,7 @@ lightanon input.parquet output.csv -c schema.yaml --engine polars
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --ttl-seconds 3600
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152 --business-mode company
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag scan prompt.txt --profile ru_152

@@ -54,6 +54,19 @@ sanitizer = TextSanitizer(profile="ru_152")
 
 Configuration priority: `rules` > `enabled_rules` > `profile`.
 
+For corporate RAG workflows, you can additionally enable organization-requisites protection. It composes with personal-data profiles:
+
+```python
+sanitizer = TextSanitizer(profile="ru_152", business_mode="company")
+```
+
+`business_mode` values:
+- `none`: do not add organization requisites rules;
+- `company`: hides company requisites such as INN, KPP, OGRN, OKPO, BIK, settlement and correspondent accounts, legal address, full names, and short names;
+- `company_and_counterparties`: additionally hides compact requisites blocks for counterparties, suppliers, contractors, buyers, customers, performers, and clients.
+
+If an explicit `rules` list is passed through the Python API, it fully defines the active rules.
+
 The built-in `INN` rule is also available, but disabled by default: bare 10/12 digit numbers can easily conflict with other document patterns without context. Enable it explicitly:
 
 ```python
@@ -178,9 +191,11 @@ RAG commands work with plain text files and require `--vault` so restoration can
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --ttl-seconds 3600
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --profile ru_152
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json --profile ru_152 --business-mode company
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json --business-mode company_and_counterparties
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
-lightanon rag scan input.txt --profile ru_152
+lightanon rag scan input.txt --profile ru_152 --business-mode company
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
@@ -198,4 +213,5 @@ lightanon rag clear-vault vault.json
 `delete-token`, `delete-value`, and `clear-vault` manage saved mapping lifecycle.
 `--ttl-seconds` sets lifetime for new mappings, and `purge-expired` deletes expired entries.
 `--profile` enables a built-in rule profile. Available profiles: `basic`, `ru_152`, `ru_152_strict`.
+`--business-mode` adds organization-requisites protection on top of the selected profile. Available modes: `none`, `company`, `company_and_counterparties`.
 `--rules` enables only the listed built-in rules and is useful when you need to disable the broad name heuristic, explicitly enable `INN`, or process online identifiers.

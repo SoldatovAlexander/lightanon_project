@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Added
+- RAG `business_mode` for optional company and counterparty requisites protection before cloud LLM calls.
+- Built-in RAG business rules for organization names, INN/KPP/OGRN/OKPO, legal addresses, bank accounts, BIK, and compact counterparty requisites blocks.
+- CLI `--business-mode` option for `lightanon rag sanitize` and `lightanon rag scan`.
+
 ## 0.2.0
 
 ### Added

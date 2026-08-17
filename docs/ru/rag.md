@@ -54,6 +54,19 @@ sanitizer = TextSanitizer(profile="ru_152")
 
 Приоритет настройки: `rules` > `enabled_rules` > `profile`.
 
+Для корпоративных RAG-сценариев можно дополнительно включить режим скрытия реквизитов организации. Он работает одновременно с профилями ПД:
+
+```python
+sanitizer = TextSanitizer(profile="ru_152", business_mode="company")
+```
+
+Режимы `business_mode`:
+- `none`: реквизиты организаций не добавляются к набору правил;
+- `company`: скрывает реквизиты компании: ИНН, КПП, ОГРН, ОКПО, БИК, расчетные и корреспондентские счета, юридический адрес, полные и краткие названия;
+- `company_and_counterparties`: дополнительно скрывает компактные блоки реквизитов контрагентов, поставщиков, подрядчиков, покупателей, заказчиков, исполнителей и клиентов.
+
+Если передать явный список через Python API параметр `rules`, он полностью определяет набор правил.
+
 Также доступно встроенное правило `INN`, но оно выключено по умолчанию: 10/12 цифр без контекста легко конфликтуют с другими документами. Его можно включить явно:
 
 ```python
@@ -178,9 +191,11 @@ RAG-команды работают с обычными текстовыми ф�
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --ttl-seconds 3600
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --profile ru_152
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json --profile ru_152 --business-mode company
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json --business-mode company_and_counterparties
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
-lightanon rag scan input.txt --profile ru_152
+lightanon rag scan input.txt --profile ru_152 --business-mode company
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
@@ -198,4 +213,5 @@ lightanon rag clear-vault vault.json
 `delete-token`, `delete-value` и `clear-vault` управляют жизненным циклом сохраненных маппингов.
 `--ttl-seconds` задает срок жизни новых маппингов, а `purge-expired` удаляет истекшие записи.
 `--profile` включает готовый профиль правил. Доступные профили: `basic`, `ru_152`, `ru_152_strict`.
+`--business-mode` добавляет защиту реквизитов организации поверх выбранного профиля. Доступные режимы: `none`, `company`, `company_and_counterparties`.
 `--rules` включает только указанные встроенные правила и полезен, когда нужно отключить широкую эвристику ФИО, явно включить `INN` или обработать интернет-идентификаторы.

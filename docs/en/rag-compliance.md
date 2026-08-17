@@ -56,6 +56,30 @@ lightanon rag sanitize input.txt output.txt --vault vault.json --profile ru_152
 - adds `IP_ADDRESS`, `COOKIE_ID`, `DEVICE_ID`, `USER_ID`;
 - useful for logs, support tickets, analytics exports, and operational systems.
 
+## Company and Counterparty Requisites
+
+Beyond personal data, RAG context may contain information that identifies the company itself or its counterparties: full and short organization names, INN, KPP, OGRN, OKPO, legal address, BIK, settlement accounts, and correspondent accounts. For cloud-model workflows where a company wants to keep such data inside its own boundary, enable `business_mode` on top of the selected personal-data profile:
+
+```python
+from lightanon.rag import TextSanitizer
+
+sanitizer = TextSanitizer(profile="ru_152", business_mode="company")
+clean = sanitizer.sanitize('Company requisites: ООО "Romashka", ИНН 7707083893, КПП 770701001')
+```
+
+Modes:
+- `company`: hides company requisites;
+- `company_and_counterparties`: additionally hides compact requisites blocks for counterparties, suppliers, contractors, buyers, customers, performers, and clients.
+
+CLI:
+
+```bash
+lightanon rag sanitize input.txt output.txt --vault vault.json --profile ru_152 --business-mode company
+lightanon rag sanitize input.txt output.txt --vault vault.json --profile ru_152 --business-mode company_and_counterparties
+```
+
+This mode does not replace personal-data controls; it is added to them. Use the same mode in `scan` before sending context to an external LLM.
+
 ## Metadata
 
 RAG metadata may contain personal data:
@@ -96,7 +120,7 @@ clean, report = sanitizer.sanitize_with_report(text)
 CLI:
 
 ```bash
-lightanon rag scan input.txt --profile ru_152
+lightanon rag scan input.txt --profile ru_152 --business-mode company
 ```
 
 Reports contain counters and risk level, not original values.
@@ -145,6 +169,7 @@ lightanon rag clear-vault vault.json
 
 Before sending RAG context to an LLM:
 - choose `ru_152` or `ru_152_strict`;
+- enable `business_mode` when company or counterparty requisites must be hidden;
 - sanitize chunk text;
 - sanitize metadata;
 - scan or generate a report;

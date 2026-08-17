@@ -94,14 +94,15 @@ Public exports:
 - `FileVault`
 - `Patterns`
 
-### `TextSanitizer(vault: Optional[BaseVault] = None, enabled_rules=None, rules=None, profile="basic")`
+### `TextSanitizer(vault: Optional[BaseVault] = None, enabled_rules=None, rules=None, profile="basic", business_mode="none")`
 - uses `MemoryVault` by default,
 - stores `original value -> token` mappings,
 - reuses the same token for repeated values,
 - supports built-in regex patterns and custom rules,
 - can enable only selected built-in rules with `enabled_rules`,
 - can accept an explicit rule list with `rules=[("EMAIL", Patterns.EMAIL), ...]`,
-- supports rule profiles: `basic`, `ru_152`, `ru_152_strict`.
+- supports rule profiles: `basic`, `ru_152`, `ru_152_strict`,
+- supports optional organization-requisites protection with `business_mode`.
 
 Main methods:
 - `sanitize(text: str) -> str`
@@ -114,10 +115,10 @@ Main methods:
 - `deanonymize(text: str, policy: str = "restore", allowed_entity_types=None) -> str`
 - `add_rule(name: str, pattern: str)`
 
-Built-in rules: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`.
+Built-in rules: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`, `BUSINESS_REQUISITES`, `COUNTERPARTY_REQUISITES`, `ORGANIZATION_NAME`, `COMPANY_INN`, `KPP`, `OGRN`, `OKPO`, `LEGAL_ADDRESS`, `BANK_ACCOUNT`, `CORRESPONDENT_ACCOUNT`, `BIK`.
 `INN` is disabled by default so bare 10/12 digit numbers do not conflict with document patterns without context.
 `ONLINE_ACCOUNT` targets combined online identifiers such as `nickname ivan_dev on Habr` or `Telegram: @ivanov` and tokenizes the pair as one entity.
-Configuration priority: `rules` > `enabled_rules` > `profile`.
+`business_mode="company"` adds company-requisites rules on top of the selected profile. `business_mode="company_and_counterparties"` additionally enables compact counterparty-requisites blocks. Configuration priority: `rules` > `enabled_rules` > `profile`; `business_mode` is applied to the selected rule set when `rules` is not passed explicitly.
 
 Example:
 

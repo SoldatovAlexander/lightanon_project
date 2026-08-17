@@ -14,6 +14,7 @@
 - Базовые правила: `Hash`, `Mask`, `GaussianNoise`, `Generalize`.
 - Финансовые правила: `MultiplicativeNoise`, `TopCoding`, `CreditCardMask`.
 - Отдельный RAG-блок для обратимого обезличивания текста перед LLM.
+- Опциональная защита реквизитов компании и контрагентов в RAG перед облачными LLM.
 - Генерация отчета о примененных методах обезличивания.
 ## Установка
 ```bash
@@ -57,6 +58,7 @@ lightanon input.parquet output.csv -c schema.yaml --engine polars
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --ttl-seconds 3600
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152 --business-mode company
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag scan prompt.txt --profile ru_152

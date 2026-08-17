@@ -102,6 +102,12 @@ def _run_rag_cli(argv):
     sanitize_parser.add_argument("--vault", required=True, help="Path to JSON token vault")
     sanitize_parser.add_argument("--encoding", default="utf-8", help="Text encoding")
     sanitize_parser.add_argument("--ttl-seconds", type=int, help="Default TTL for newly created vault mappings")
+    sanitize_parser.add_argument(
+        "--business-mode",
+        choices=la.rag.TextSanitizer.BUSINESS_MODES,
+        default="none",
+        help="Organization requisites protection mode",
+    )
     sanitize_parser.add_argument("--rules", help="Comma-separated built-in rules, for example EMAIL,PHONE,INN")
     sanitize_parser.add_argument(
         "--profile",
@@ -126,6 +132,12 @@ def _run_rag_cli(argv):
     scan_parser = subparsers.add_parser("scan", help="Detect RAG entities without writing a vault")
     scan_parser.add_argument("input_file", help="Path to input text file")
     scan_parser.add_argument("--encoding", default="utf-8", help="Text encoding")
+    scan_parser.add_argument(
+        "--business-mode",
+        choices=la.rag.TextSanitizer.BUSINESS_MODES,
+        default="none",
+        help="Organization requisites protection mode",
+    )
     scan_parser.add_argument(
         "--profile",
         choices=sorted(la.rag.TextSanitizer.PROFILES),
@@ -193,7 +205,11 @@ def _run_rag_cli(argv):
 
     if args.command == "scan":
         enabled_rules = _parse_rule_names(args.rules) if args.rules else None
-        sanitizer = la.rag.TextSanitizer(enabled_rules=enabled_rules, profile=args.profile)
+        sanitizer = la.rag.TextSanitizer(
+            enabled_rules=enabled_rules,
+            profile=args.profile,
+            business_mode=args.business_mode,
+        )
         text = _read_text(args.input_file, args.encoding)
         print(json.dumps(sanitizer.scan(text), ensure_ascii=False, indent=2))
         return
@@ -207,7 +223,12 @@ def _run_rag_cli(argv):
     else:
         enabled_rules = _parse_rule_names(args.rules) if args.rules else None
         vault = la.rag.FileVault(args.vault, default_ttl_seconds=args.ttl_seconds)
-        sanitizer = la.rag.TextSanitizer(vault=vault, enabled_rules=enabled_rules, profile=args.profile)
+        sanitizer = la.rag.TextSanitizer(
+            vault=vault,
+            enabled_rules=enabled_rules,
+            profile=args.profile,
+            business_mode=args.business_mode,
+        )
         result = sanitizer.sanitize(text)
 
     _write_text(args.output_file, result, args.encoding)

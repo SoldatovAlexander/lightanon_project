@@ -238,6 +238,42 @@ def test_rag_cli_sanitize_with_ru_152_profile(tmp_path):
     assert "[ONLINE_ACCOUNT_" in sanitized
 
 
+def test_rag_cli_sanitize_with_business_mode(tmp_path):
+    input_path = tmp_path / "input.txt"
+    sanitized_path = tmp_path / "sanitized.txt"
+    vault_path = tmp_path / "vault.json"
+    input_path.write_text('Компания ООО "Ромашка", ИНН 7707083893.', encoding="utf-8")
+
+    cli.main(
+        [
+            "rag",
+            "sanitize",
+            str(input_path),
+            str(sanitized_path),
+            "--vault",
+            str(vault_path),
+            "--business-mode",
+            "company",
+        ]
+    )
+
+    sanitized = sanitized_path.read_text(encoding="utf-8")
+    assert "Ромашка" not in sanitized
+    assert "7707083893" not in sanitized
+    assert "[ORGANIZATION_NAME_" in sanitized or "[BUSINESS_REQUISITES_" in sanitized
+
+
+def test_rag_cli_scan_with_business_mode(tmp_path, capsys):
+    input_path = tmp_path / "input.txt"
+    input_path.write_text('Контрагент: АО "Вектор", ИНН 7708123456, КПП 770801001.', encoding="utf-8")
+
+    cli.main(["rag", "scan", str(input_path), "--business-mode", "company_and_counterparties"])
+
+    report = json.loads(capsys.readouterr().out)
+    assert report["entities"] == {"COUNTERPARTY_REQUISITES": 1}
+    assert report["total"] == 1
+
+
 def test_rag_cli_rules_override_profile(tmp_path):
     input_path = tmp_path / "input.txt"
     sanitized_path = tmp_path / "sanitized.txt"

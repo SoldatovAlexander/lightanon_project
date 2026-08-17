@@ -94,14 +94,15 @@ RAG-блок не является набором `BaseRule` для колоно
 - `FileVault`
 - `Patterns`
 
-### `TextSanitizer(vault: Optional[BaseVault] = None, enabled_rules=None, rules=None, profile="basic")`
+### `TextSanitizer(vault: Optional[BaseVault] = None, enabled_rules=None, rules=None, profile="basic", business_mode="none")`
 - использует `MemoryVault` по умолчанию,
 - сохраняет соответствие `исходное значение -> токен`,
 - переиспользует один и тот же токен для повторяющегося значения,
 - поддерживает встроенные regex-паттерны и пользовательские правила,
 - умеет включать только выбранные встроенные правила через `enabled_rules`,
 - может принять явный список правил через `rules=[("EMAIL", Patterns.EMAIL), ...]`,
-- поддерживает профили правил: `basic`, `ru_152`, `ru_152_strict`.
+- поддерживает профили правил: `basic`, `ru_152`, `ru_152_strict`,
+- поддерживает дополнительный режим скрытия реквизитов организаций через `business_mode`.
 
 Основные методы:
 - `sanitize(text: str) -> str`
@@ -114,10 +115,10 @@ RAG-блок не является набором `BaseRule` для колоно
 - `deanonymize(text: str, policy: str = "restore", allowed_entity_types=None) -> str`
 - `add_rule(name: str, pattern: str)`
 
-Встроенные правила: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`.
+Встроенные правила: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`, `BUSINESS_REQUISITES`, `COUNTERPARTY_REQUISITES`, `ORGANIZATION_NAME`, `COMPANY_INN`, `KPP`, `OGRN`, `OKPO`, `LEGAL_ADDRESS`, `BANK_ACCOUNT`, `CORRESPONDENT_ACCOUNT`, `BIK`.
 По умолчанию `INN` выключен, чтобы голые 10/12 цифр не конфликтовали с документами без контекста.
 Правило `ONLINE_ACCOUNT` предназначено для составных интернет-идентификаторов, например `никнейм ivan_dev на Habr` или `Telegram: @ivanov`, и токенизирует такую связку целиком.
-Приоритет настройки: `rules` > `enabled_rules` > `profile`.
+`business_mode="company"` добавляет правила для реквизитов компании поверх выбранного профиля. `business_mode="company_and_counterparties"` дополнительно включает компактные блоки реквизитов контрагентов. Приоритет настройки: `rules` > `enabled_rules` > `profile`; `business_mode` применяется к выбранному набору, если `rules` не передан явно.
 
 Пример:
 

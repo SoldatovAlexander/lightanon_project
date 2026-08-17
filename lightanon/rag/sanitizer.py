@@ -7,6 +7,17 @@ from .patterns import Patterns
 
 class TextSanitizer:
     AVAILABLE_RULES: Dict[str, str] = {
+        "COUNTERPARTY_REQUISITES": Patterns.COUNTERPARTY_REQUISITES,
+        "BUSINESS_REQUISITES": Patterns.BUSINESS_REQUISITES,
+        "ORGANIZATION_NAME": Patterns.ORGANIZATION_NAME,
+        "COMPANY_INN": Patterns.COMPANY_INN,
+        "KPP": Patterns.KPP,
+        "OGRN": Patterns.OGRN,
+        "OKPO": Patterns.OKPO,
+        "LEGAL_ADDRESS": Patterns.LEGAL_ADDRESS,
+        "BANK_ACCOUNT": Patterns.BANK_ACCOUNT,
+        "CORRESPONDENT_ACCOUNT": Patterns.CORRESPONDENT_ACCOUNT,
+        "BIK": Patterns.BIK,
         "ONLINE_ACCOUNT": "|".join(
             [
                 Patterns.ONLINE_ACCOUNT_RU,
@@ -70,6 +81,22 @@ class TextSanitizer:
             "USER_ID",
         ),
     }
+    COMPANY_RULE_NAMES: Tuple[str, ...] = (
+        "BUSINESS_REQUISITES",
+        "ORGANIZATION_NAME",
+        "COMPANY_INN",
+        "KPP",
+        "OGRN",
+        "OKPO",
+        "LEGAL_ADDRESS",
+        "BANK_ACCOUNT",
+        "CORRESPONDENT_ACCOUNT",
+        "BIK",
+    )
+    COUNTERPARTY_RULE_NAMES: Tuple[str, ...] = (
+        "COUNTERPARTY_REQUISITES",
+    )
+    BUSINESS_MODES: Tuple[str, ...] = ("none", "company", "company_and_counterparties")
 
     def __init__(
         self,
@@ -77,6 +104,7 @@ class TextSanitizer:
         enabled_rules: Optional[Iterable[str]] = None,
         rules: Optional[List[Tuple[str, str]]] = None,
         profile: str = "basic",
+        business_mode: str = "none",
     ):
         """
         Initialize the RAG Sanitizer.
@@ -84,6 +112,7 @@ class TextSanitizer:
         :param enabled_rules: Built-in rule names to enable. Defaults to DEFAULT_RULE_NAMES.
         :param rules: Explicit rule list as (entity_type, regex pattern) tuples.
         :param profile: Built-in rule profile. One of: basic, ru_152, ru_152_strict.
+        :param business_mode: Organization-requisites mode: none, company, company_and_counterparties.
         """
         self.vault = vault if vault else MemoryVault()
 
@@ -92,6 +121,7 @@ class TextSanitizer:
             self.rules = [(self._normalize_entity_type(name), pattern) for name, pattern in rules]
         else:
             selected_rules = enabled_rules if enabled_rules is not None else self._rules_for_profile(profile)
+            selected_rules = self._apply_business_mode(selected_rules, business_mode)
             self.rules = self._build_rules(selected_rules)
 
     def _rules_for_profile(self, profile: str) -> Tuple[str, ...]:
@@ -99,6 +129,29 @@ class TextSanitizer:
         if profile_name not in self.PROFILES:
             raise ValueError(f"Unknown RAG profile: {profile}")
         return self.PROFILES[profile_name]
+
+    def _apply_business_mode(self, rule_names: Iterable[str], business_mode: str) -> Tuple[str, ...]:
+        mode = business_mode.lower()
+        if mode not in self.BUSINESS_MODES:
+            raise ValueError(f"Unknown business mode: {business_mode}")
+
+        business_rules: Tuple[str, ...] = ()
+        if mode == "company":
+            business_rules = self.COMPANY_RULE_NAMES
+        elif mode == "company_and_counterparties":
+            business_rules = self.COUNTERPARTY_RULE_NAMES + self.COMPANY_RULE_NAMES
+
+        return self._dedupe_rules(business_rules + tuple(rule_names))
+
+    def _dedupe_rules(self, rule_names: Iterable[str]) -> Tuple[str, ...]:
+        result = []
+        seen = set()
+        for rule_name in rule_names:
+            normalized = self._normalize_entity_type(rule_name)
+            if normalized not in seen:
+                seen.add(normalized)
+                result.append(normalized)
+        return tuple(result)
 
     def _build_rules(self, enabled_rules: Iterable[str]) -> List[Tuple[str, str]]:
         rules = []

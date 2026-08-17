@@ -244,6 +244,89 @@ def test_unknown_profile_fails_fast():
         TextSanitizer(profile="unknown")
 
 
+def test_business_mode_is_opt_in():
+    sanitizer = TextSanitizer()
+
+    clean = sanitizer.sanitize('Реквизиты ООО "Ромашка": ИНН 7707083893, КПП 770701001.')
+
+    assert clean == 'Реквизиты ООО "Ромашка": ИНН 7707083893, КПП 770701001.'
+
+
+def test_company_business_mode_sanitizes_company_requisites():
+    sanitizer = TextSanitizer(business_mode="company")
+    text = (
+        'Реквизиты ООО "Ромашка": ИНН 7707083893, КПП 770701001, '
+        'ОГРН 1027700132195, БИК 044525225, р/с 40702810900000000001.'
+    )
+
+    clean = sanitizer.sanitize(text)
+
+    assert 'ООО "Ромашка"' not in clean
+    assert "7707083893" not in clean
+    assert "770701001" not in clean
+    assert "1027700132195" not in clean
+    assert "044525225" not in clean
+    assert "40702810900000000001" not in clean
+    assert re.search(r"\[BUSINESS_REQUISITES_[a-f0-9]{8}\]", clean)
+
+
+def test_company_business_mode_sanitizes_legal_address_and_bank_details():
+    sanitizer = TextSanitizer(business_mode="company")
+    text = (
+        'Юридический адрес: 125009, г. Москва, ул. Тверская, д. 1; '
+        'к/с 30101810400000000225, ОКПО 12345678.'
+    )
+
+    clean = sanitizer.sanitize(text)
+
+    assert "Тверская" not in clean
+    assert "30101810400000000225" not in clean
+    assert "12345678" not in clean
+    assert re.search(r"\[LEGAL_ADDRESS_[a-f0-9]{8}\]", clean)
+    assert re.search(r"\[CORRESPONDENT_ACCOUNT_[a-f0-9]{8}\]", clean)
+    assert re.search(r"\[OKPO_[a-f0-9]{8}\]", clean)
+
+
+def test_company_and_counterparties_mode_prioritizes_counterparty_block():
+    sanitizer = TextSanitizer(business_mode="company_and_counterparties")
+
+    clean = sanitizer.sanitize('Контрагент: АО "Вектор", ИНН 7708123456, КПП 770801001.')
+
+    assert "Вектор" not in clean
+    assert "7708123456" not in clean
+    assert "770801001" not in clean
+    assert re.search(r"\[COUNTERPARTY_REQUISITES_[a-f0-9]{8}\]", clean)
+    assert "[ORGANIZATION_NAME_" not in clean
+
+
+def test_business_mode_combines_with_ru_152_profile():
+    sanitizer = TextSanitizer(profile="ru_152", business_mode="company")
+
+    clean = sanitizer.sanitize('Email: ivan@example.com. Компания ООО "Ромашка", ИНН 7707083893.')
+
+    assert "ivan@example.com" not in clean
+    assert "Ромашка" not in clean
+    assert "7707083893" not in clean
+    assert re.search(r"\[EMAIL_[a-f0-9]{8}\]", clean)
+    assert re.search(r"\[(BUSINESS_REQUISITES|ORGANIZATION_NAME|COMPANY_INN)_[a-f0-9]{8}\]", clean)
+
+
+def test_business_mode_sanitizes_metadata():
+    sanitizer = TextSanitizer(business_mode="company")
+
+    clean = sanitizer.sanitize_metadata({"company": 'ООО "Ромашка"', "inn": "ИНН 7707083893"})
+
+    assert "Ромашка" not in clean["company"]
+    assert "7707083893" not in clean["inn"]
+    assert re.search(r"\[ORGANIZATION_NAME_[a-f0-9]{8}\]", clean["company"])
+    assert re.search(r"\[COMPANY_INN_[a-f0-9]{8}\]", clean["inn"])
+
+
+def test_unknown_business_mode_fails_fast():
+    with pytest.raises(ValueError, match="Unknown business mode"):
+        TextSanitizer(business_mode="unknown")
+
+
 def test_unknown_builtin_rule_fails_fast():
     with pytest.raises(ValueError, match="Unknown built-in RAG rule"):
         TextSanitizer(enabled_rules=["EMAIL", "UNKNOWN"])

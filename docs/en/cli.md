@@ -14,9 +14,11 @@ RAG text sanitization:
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json>
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --ttl-seconds 3600
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --profile ru_152
+lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --profile ru_152 --business-mode company
+lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --business-mode company_and_counterparties
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules EMAIL,PHONE,INN
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
-lightanon rag scan <input.txt> --profile ru_152
+lightanon rag scan <input.txt> --profile ru_152 --business-mode company
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy mask
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy restore_allowed_only --allowed-types EMAIL
@@ -47,6 +49,7 @@ lightanon rag clear-vault <vault.json>
 - `--vault`: JSON token-mapping file,
 - `--ttl-seconds`: lifetime for newly created vault mappings, in seconds,
 - `--profile`: rule profile for `sanitize`: `basic`, `ru_152`, `ru_152_strict`,
+- `--business-mode`: additional organization-requisites protection for `sanitize` and `scan`: `none`, `company`, `company_and_counterparties`,
 - `--rules`: comma-separated built-in rule list for `sanitize`,
 - `--policy`: restoration policy for `restore`: `restore`, `no_personal_data`, `mask`, `restore_allowed_only`,
 - `--allowed-types`: comma-separated type list for `restore_allowed_only`,
@@ -84,9 +87,11 @@ lightanon data/input.parquet data/output.csv -c schema.yaml --engine polars
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --ttl-seconds 3600
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152 --business-mode company
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --business-mode company_and_counterparties
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL,PHONE,INN
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
-lightanon rag scan prompt.txt --profile ru_152
+lightanon rag scan prompt.txt --profile ru_152 --business-mode company
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
@@ -105,7 +110,8 @@ lightanon rag clear-vault vault.json
 For RAG CLI:
 - `sanitize` creates or updates `vault.json`,
 - `--profile` selects a built-in rule set; `--rules` has higher priority,
-- `--rules` enables only the listed rules; available values: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`,
+- `--business-mode` adds company or company-and-counterparty requisites rules on top of the selected profile,
+- `--rules` enables only the listed rules; available values: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`, `BUSINESS_REQUISITES`, `COUNTERPARTY_REQUISITES`, `ORGANIZATION_NAME`, `COMPANY_INN`, `KPP`, `OGRN`, `OKPO`, `LEGAL_ADDRESS`, `BANK_ACCOUNT`, `CORRESPONDENT_ACCOUNT`, `BIK`,
 - repeated `sanitize` with the same vault reuses existing tokens,
 - `restore` requires the same vault used during `sanitize`,
 - corrupted or incorrectly structured vault files fail the command.
