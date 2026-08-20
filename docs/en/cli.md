@@ -11,7 +11,7 @@ lightanon <input_file> <output_file> -c <schema.yaml> [--engine pandas|polars]
 RAG text sanitization:
 
 ```bash
-lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json>
+lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --scope-file <scope.json>
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --ttl-seconds 3600
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --profile ru_152
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --profile ru_152 --business-mode company
@@ -19,9 +19,10 @@ lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --business-
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules EMAIL,PHONE,INN
 lightanon rag sanitize <input.txt> <output.txt> --vault <vault.json> --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag scan <input.txt> --profile ru_152 --business-mode company
-lightanon rag restore <input.txt> <output.txt> --vault <vault.json>
+lightanon rag restore <input.txt> <output.txt> --vault <vault.json> # masks by default
+lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy restore --scope-file <scope.json>
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy mask
-lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy restore_allowed_only --allowed-types EMAIL
+lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy restore_allowed_only --allowed-types EMAIL --scope-file <scope.json>
 lightanon rag inspect-vault <vault.json>
 lightanon rag delete-token <vault.json> <token>
 lightanon rag delete-value <vault.json> <value>
@@ -47,11 +48,13 @@ lightanon rag clear-vault <vault.json>
 - `purge-expired`: delete expired mappings,
 - `clear-vault`: delete all mappings,
 - `--vault`: JSON token-mapping file,
+- `--vault-key-env`: environment variable containing the Fernet key for encrypted vault operations,
+- `--scope-file`: write a token scope during `sanitize`; required for `restore` and `restore_allowed_only`,
 - `--ttl-seconds`: lifetime for newly created vault mappings, in seconds,
 - `--profile`: rule profile for `sanitize`: `basic`, `ru_152`, `ru_152_strict`,
 - `--business-mode`: additional organization-requisites protection for `sanitize` and `scan`: `none`, `company`, `company_and_counterparties`,
 - `--rules`: comma-separated built-in rule list for `sanitize`,
-- `--policy`: restoration policy for `restore`: `restore`, `no_personal_data`, `mask`, `restore_allowed_only`,
+- `--policy`: output policy for `restore`, defaults to `mask`: `restore`, `no_personal_data`, `mask`, `restore_allowed_only`,
 - `--allowed-types`: comma-separated type list for `restore_allowed_only`,
 - `--encoding`: text-file encoding, defaults to `utf-8`.
 
@@ -84,7 +87,8 @@ lightanon data/input.csv data/output.parquet -c schema.yaml --engine pandas
 lightanon data/input.parquet data/output.csv -c schema.yaml --engine polars
 
 # RAG sanitize -> restore
-lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --scope-file scope.json
+lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --vault-key-env LIGHTANON_VAULT_KEY
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --ttl-seconds 3600
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --profile ru_152 --business-mode company
@@ -93,8 +97,9 @@ lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules EMAIL
 lightanon rag sanitize prompt.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag scan prompt.txt --profile ru_152 --business-mode company
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore --scope-file scope.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
-lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL --scope-file scope.json
 lightanon rag inspect-vault vault.json
 lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
 lightanon rag purge-expired vault.json
@@ -105,10 +110,14 @@ lightanon rag clear-vault vault.json
 - unknown rule in YAML: skipped with warning,
 - invalid YAML item format: skipped with warning,
 - empty schema: input is copied to output,
+- rule application errors replace the affected output column and make the CLI exit with code `1`,
 - report is printed at the end.
 
 For RAG CLI:
 - `sanitize` creates or updates `vault.json`,
+- `sanitize --scope-file` writes the allowed token occurrences for an associated response,
+- `--vault-key-env` encrypts or decrypts the vault with a Fernet key read from the named environment variable,
+- `restore` masks tokens by default; explicit restoration policies require `--scope-file` and cannot reveal tokens outside that scope,
 - `--profile` selects a built-in rule set; `--rules` has higher priority,
 - `--business-mode` adds company or company-and-counterparty requisites rules on top of the selected profile,
 - `--rules` enables only the listed rules; available values: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`, `BUSINESS_REQUISITES`, `COUNTERPARTY_REQUISITES`, `ORGANIZATION_NAME`, `COMPANY_INN`, `KPP`, `OGRN`, `OKPO`, `LEGAL_ADDRESS`, `BANK_ACCOUNT`, `CORRESPONDENT_ACCOUNT`, `BIK`,

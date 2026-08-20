@@ -14,11 +14,11 @@ from lightanon.rag import TextSanitizer
 sanitizer = TextSanitizer()
 
 original = "Заявитель Иванов Иван, паспорт 4500 123456, телефон +7 900 123-45-67."
-sanitized = sanitizer.sanitize(original)
+sanitized, token_scope = sanitizer.sanitize_with_scope(original)
 
 # Симуляция ответа LLM
 response = f"Подтверждаю: {sanitized}"
-restored = sanitizer.deanonymize(response)
+restored = sanitizer.deanonymize(response, policy="restore", token_scope=token_scope)
 
 print(sanitized)
 print(restored)
@@ -29,10 +29,10 @@ print(restored)
 ```python
 sanitizer.deanonymize(response, policy="no_personal_data")
 sanitizer.deanonymize(response, policy="mask")
-sanitizer.deanonymize(response, policy="restore_allowed_only", allowed_entity_types=["EMAIL"])
+sanitizer.deanonymize(response, policy="restore_allowed_only", allowed_entity_types=["EMAIL"], token_scope=token_scope)
 ```
 
-Политика `restore` сохраняет прежнее поведение и восстанавливает все известные токены.
+По умолчанию используется безопасная политика `mask`. Для явного восстановления нужен `token_scope`, возвращаемый `sanitize_with_scope(...)`: он разрешает только токены этого очищенного входа и только в количестве исходных вхождений.
 
 ## Встроенные паттерны
 По умолчанию используются регулярные выражения для:
@@ -112,7 +112,7 @@ clean_metadata = sanitizer.sanitize_metadata(metadata)
 Для симметричного восстановления metadata используйте те же политики, что и для текста:
 
 ```python
-restored_metadata = sanitizer.deanonymize_metadata(clean_metadata)
+masked_metadata = sanitizer.deanonymize_metadata(clean_metadata)
 masked_metadata = sanitizer.deanonymize_metadata(clean_metadata, policy="mask")
 ```
 
@@ -174,21 +174,25 @@ sanitizer.add_rule("CONTRACT", r"\b\d{2}-\d{4}/\d{2}\b")
 `FileVault` сохраняет соответствия в JSON-файл и подходит для локального CLI:
 
 ```python
+import os
+
 from lightanon.rag import FileVault, TextSanitizer
 
-sanitizer = TextSanitizer(vault=FileVault("vault.json"))
+sanitizer = TextSanitizer(vault=FileVault("vault.json", encryption_key=os.environ["LIGHTANON_VAULT_KEY"]))
 ```
 
-`FileVault` валидирует структуру JSON при чтении и записывает изменения через временный файл с атомарной заменой. Новые записи содержат `created_at`, `last_used_at` и, если задан TTL, `expires_at`. Метод `stats()` возвращает только счетчики, без исходных значений.
+`FileVault` валидирует структуру JSON при чтении, интерпретирует legacy-timestamps без timezone как UTC и записывает изменения через временный файл с правами `0600` и атомарной заменой. Чтение не переписывает vault. Новые записи содержат `created_at`, `last_used_at` и, если задан TTL, `expires_at`. Метод `stats()` возвращает только счетчики, без исходных значений.
 
-Vault содержит исходные персональные данные. Храните его как защищаемый объект и удаляйте маппинги, когда они больше не нужны.
+Передайте ключ Fernet через `encryption_key`, чтобы шифровать содержимое `FileVault` на диске. Режим JSON без ключа сохранён только для локальной совместимости; в production нужны шифрование, управляемые ключи и контроль доступа. Vault содержит исходные персональные данные; удаляйте маппинги, когда они больше не нужны.
 
 ## CLI
 
 RAG-команды работают с обычными текстовыми файлами и требуют `--vault`, чтобы восстановление можно было выполнить отдельным запуском:
 
 ```bash
-lightanon rag sanitize input.txt sanitized.txt --vault vault.json
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json --scope-file scope.json
+export LIGHTANON_VAULT_KEY='...'
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json --vault-key-env LIGHTANON_VAULT_KEY
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --ttl-seconds 3600
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --profile ru_152
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --profile ru_152 --business-mode company
@@ -197,8 +201,9 @@ lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules EMAIL,
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag scan input.txt --profile ru_152 --business-mode company
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore --scope-file scope.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
-lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL --scope-file scope.json
 lightanon rag inspect-vault vault.json
 lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
 lightanon rag delete-value vault.json 'ivan@example.com'
@@ -206,8 +211,8 @@ lightanon rag purge-expired vault.json
 lightanon rag clear-vault vault.json
 ```
 
-`sanitize` записывает токены в vault. `restore` использует тот же vault для замены токенов исходными значениями.
-`restore --policy` управляет раскрытием значений в финальном ответе: `restore`, `no_personal_data`, `mask`, `restore_allowed_only`.
+`sanitize --scope-file` записывает рядом с vault безопасную область токенов. `restore` по умолчанию использует `mask`; для явного `restore` и `restore_allowed_only` необходим `--scope-file`, который не позволяет восстановить токены вне области или сверх количества исходных вхождений.
+`--vault-key-env` читает ключ Fernet из переменной окружения и шифрует/расшифровывает локальный vault без передачи ключа в истории команд.
 `scan` печатает JSON-отчет без записи в vault и без раскрытия исходных значений.
 `inspect-vault` показывает количество сохраненных маппингов и распределение по типам токенов, не раскрывая сохраненные значения.
 `delete-token`, `delete-value` и `clear-vault` управляют жизненным циклом сохраненных маппингов.

@@ -14,11 +14,11 @@ from lightanon.rag import TextSanitizer
 sanitizer = TextSanitizer()
 
 original = "Applicant Ivan Ivanov, passport 4500 123456, phone +7 900 123-45-67."
-sanitized = sanitizer.sanitize(original)
+sanitized, token_scope = sanitizer.sanitize_with_scope(original)
 
 # Simulated LLM output
 response = f"Confirmed: {sanitized}"
-restored = sanitizer.deanonymize(response)
+restored = sanitizer.deanonymize(response, policy="restore", token_scope=token_scope)
 
 print(sanitized)
 print(restored)
@@ -29,10 +29,10 @@ For safer output, control restoration with policies:
 ```python
 sanitizer.deanonymize(response, policy="no_personal_data")
 sanitizer.deanonymize(response, policy="mask")
-sanitizer.deanonymize(response, policy="restore_allowed_only", allowed_entity_types=["EMAIL"])
+sanitizer.deanonymize(response, policy="restore_allowed_only", allowed_entity_types=["EMAIL"], token_scope=token_scope)
 ```
 
-The default `restore` policy preserves existing behavior and restores all known tokens.
+The default policy is `mask`. Explicit restoration requires the token scope returned by `sanitize_with_scope(...)`; it permits only tokens from that sanitized input and only up to their original occurrence count.
 
 ## Built-in Patterns
 Default `TextSanitizer` rules include:
@@ -112,7 +112,7 @@ clean_metadata = sanitizer.sanitize_metadata(metadata)
 For symmetric metadata restoration, use the same policies as for text:
 
 ```python
-restored_metadata = sanitizer.deanonymize_metadata(clean_metadata)
+masked_metadata = sanitizer.deanonymize_metadata(clean_metadata)
 masked_metadata = sanitizer.deanonymize_metadata(clean_metadata, policy="mask")
 ```
 
@@ -174,21 +174,25 @@ Minimum `BaseVault` interface:
 `FileVault` stores mappings in a JSON file and is useful for local CLI workflows:
 
 ```python
+import os
+
 from lightanon.rag import FileVault, TextSanitizer
 
-sanitizer = TextSanitizer(vault=FileVault("vault.json"))
+sanitizer = TextSanitizer(vault=FileVault("vault.json", encryption_key=os.environ["LIGHTANON_VAULT_KEY"]))
 ```
 
-`FileVault` validates JSON structure on read and writes changes through a temporary file followed by atomic replacement. New entries include `created_at`, `last_used_at`, and `expires_at` when TTL is configured. `stats()` returns counters only, without original values.
+`FileVault` validates JSON structure on read, treats legacy timezone-less timestamps as UTC, and writes changes through a `0600` temporary file followed by atomic replacement. Reads do not rewrite the vault. New entries include `created_at`, `last_used_at`, and `expires_at` when TTL is configured. `stats()` returns counters only, without original values.
 
-The vault contains original personal data. Store it as protected data and delete mappings when they are no longer needed.
+Pass a Fernet key as `encryption_key` to encrypt `FileVault` contents at rest. The unkeyed JSON mode is retained only for local compatibility; production vaults should use encryption, managed keys, and access control. The vault contains original personal data; delete mappings when they are no longer needed.
 
 ## CLI
 
 RAG commands work with plain text files and require `--vault` so restoration can happen in a separate run:
 
 ```bash
-lightanon rag sanitize input.txt sanitized.txt --vault vault.json
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json --scope-file scope.json
+export LIGHTANON_VAULT_KEY='...'
+lightanon rag sanitize input.txt sanitized.txt --vault vault.json --vault-key-env LIGHTANON_VAULT_KEY
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --ttl-seconds 3600
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --profile ru_152
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --profile ru_152 --business-mode company
@@ -197,8 +201,9 @@ lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules EMAIL,
 lightanon rag sanitize input.txt sanitized.txt --vault vault.json --rules ONLINE_ACCOUNT,PROFILE_URL,SOCIAL_HANDLE
 lightanon rag scan input.txt --profile ru_152 --business-mode company
 lightanon rag restore llm_response.txt restored.txt --vault vault.json
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore --scope-file scope.json
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy mask
-lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL
+lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL --scope-file scope.json
 lightanon rag inspect-vault vault.json
 lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
 lightanon rag delete-value vault.json 'ivan@example.com'
@@ -206,8 +211,8 @@ lightanon rag purge-expired vault.json
 lightanon rag clear-vault vault.json
 ```
 
-`sanitize` writes tokens to the vault. `restore` uses the same vault to replace tokens with original values.
-`restore --policy` controls value disclosure in the final answer: `restore`, `no_personal_data`, `mask`, `restore_allowed_only`.
+`sanitize --scope-file` writes a non-sensitive token scope alongside the vault. `restore` defaults to `mask`; explicit `restore` and `restore_allowed_only` require `--scope-file` and cannot restore tokens outside that scope or beyond its occurrence counts.
+`--vault-key-env` reads a Fernet key from an environment variable and encrypts/decrypts the local vault without exposing the key in command history.
 `scan` prints a JSON report without writing to the vault and without revealing original values.
 `inspect-vault` prints saved mapping counts and token-type distribution without revealing stored values.
 `delete-token`, `delete-value`, and `clear-vault` manage saved mapping lifecycle.

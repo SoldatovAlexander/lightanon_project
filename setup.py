@@ -10,6 +10,7 @@ setup(
         "pyarrow>=14.0.0",
         "polars>=0.19.0",
         "pyyaml>=6.0",
+        "cryptography>=42.0.0",
     ],
     author="Your Name",
     description="Lightweight data anonymization for ML compliance (152-FZ)",

@@ -1,5 +1,6 @@
 import argparse
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -88,8 +89,43 @@ def _write_text(path: str, text: str, encoding: str) -> None:
     output_path.write_text(text, encoding=encoding)
 
 
+def _read_token_scope(path: str) -> dict:
+    try:
+        payload = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Unable to read token scope '{path}': {exc}") from exc
+    if not isinstance(payload, dict) or payload.get("version") != 1 or not isinstance(payload.get("tokens"), dict):
+        raise ValueError("Token scope must be a version 1 JSON object with a tokens mapping")
+    return payload["tokens"]
+
+
+def _write_token_scope(path: str, tokens: dict) -> None:
+    scope_path = Path(path)
+    scope_path.parent.mkdir(parents=True, exist_ok=True)
+    scope_path.write_text(
+        json.dumps({"version": 1, "tokens": tokens}, ensure_ascii=False, indent=2) + "\n",
+        encoding="utf-8",
+    )
+
+
 def _parse_rule_names(value: str):
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _add_vault_key_option(parser) -> None:
+    parser.add_argument(
+        "--vault-key-env",
+        help="Environment variable containing a Fernet key for encrypted FileVault storage",
+    )
+
+
+def _file_vault(path: str, args, default_ttl_seconds=None):
+    encryption_key = None
+    if args.vault_key_env:
+        encryption_key = os.environ.get(args.vault_key_env)
+        if encryption_key is None:
+            raise ValueError(f"Environment variable '{args.vault_key_env}' is not set")
+    return la.rag.FileVault(path, default_ttl_seconds=default_ttl_seconds, encryption_key=encryption_key)
 
 
 def _run_rag_cli(argv):
@@ -100,6 +136,11 @@ def _run_rag_cli(argv):
     sanitize_parser.add_argument("input_file", help="Path to input text file")
     sanitize_parser.add_argument("output_file", help="Path to output text file")
     sanitize_parser.add_argument("--vault", required=True, help="Path to JSON token vault")
+    _add_vault_key_option(sanitize_parser)
+    sanitize_parser.add_argument(
+        "--scope-file",
+        help="Write a token restoration scope for a later explicit restore operation",
+    )
     sanitize_parser.add_argument("--encoding", default="utf-8", help="Text encoding")
     sanitize_parser.add_argument("--ttl-seconds", type=int, help="Default TTL for newly created vault mappings")
     sanitize_parser.add_argument(
@@ -120,14 +161,19 @@ def _run_rag_cli(argv):
     restore_parser.add_argument("input_file", help="Path to input text file")
     restore_parser.add_argument("output_file", help="Path to output text file")
     restore_parser.add_argument("--vault", required=True, help="Path to JSON token vault")
+    _add_vault_key_option(restore_parser)
     restore_parser.add_argument("--encoding", default="utf-8", help="Text encoding")
     restore_parser.add_argument(
         "--policy",
         choices=["restore", "no_personal_data", "mask", "restore_allowed_only"],
-        default="restore",
-        help="Deanonymization policy",
+        default="mask",
+        help="Deanonymization policy (default: mask)",
     )
     restore_parser.add_argument("--allowed-types", help="Comma-separated entity types for restore_allowed_only")
+    restore_parser.add_argument(
+        "--scope-file",
+        help="Token scope created by rag sanitize; required by restoration policies",
+    )
 
     scan_parser = subparsers.add_parser("scan", help="Detect RAG entities without writing a vault")
     scan_parser.add_argument("input_file", help="Path to input text file")
@@ -148,25 +194,30 @@ def _run_rag_cli(argv):
 
     inspect_parser = subparsers.add_parser("inspect-vault", help="Print vault statistics without revealing values")
     inspect_parser.add_argument("vault_file", help="Path to JSON token vault")
+    _add_vault_key_option(inspect_parser)
 
     delete_token_parser = subparsers.add_parser("delete-token", help="Delete one vault mapping by token")
     delete_token_parser.add_argument("vault_file", help="Path to JSON token vault")
     delete_token_parser.add_argument("token", help="Token to delete")
+    _add_vault_key_option(delete_token_parser)
 
     delete_value_parser = subparsers.add_parser("delete-value", help="Delete one vault mapping by original value")
     delete_value_parser.add_argument("vault_file", help="Path to JSON token vault")
     delete_value_parser.add_argument("value", help="Original value to delete")
+    _add_vault_key_option(delete_value_parser)
 
     clear_vault_parser = subparsers.add_parser("clear-vault", help="Delete all vault mappings")
     clear_vault_parser.add_argument("vault_file", help="Path to JSON token vault")
+    _add_vault_key_option(clear_vault_parser)
 
     purge_parser = subparsers.add_parser("purge-expired", help="Delete expired vault mappings")
     purge_parser.add_argument("vault_file", help="Path to JSON token vault")
+    _add_vault_key_option(purge_parser)
 
     args = parser.parse_args(argv)
 
     if args.command == "inspect-vault":
-        vault = la.rag.FileVault(args.vault_file)
+        vault = _file_vault(args.vault_file, args)
         stats = vault.stats()
         print(f"Vault: {stats['path']}")
         print(f"Total mappings: {stats['total']}")
@@ -180,25 +231,25 @@ def _run_rag_cli(argv):
         return
 
     if args.command == "delete-token":
-        vault = la.rag.FileVault(args.vault_file)
+        vault = _file_vault(args.vault_file, args)
         deleted = vault.delete_token(args.token)
         print("Deleted: yes" if deleted else "Deleted: no")
         return
 
     if args.command == "delete-value":
-        vault = la.rag.FileVault(args.vault_file)
+        vault = _file_vault(args.vault_file, args)
         deleted = vault.delete_value(args.value)
         print("Deleted: yes" if deleted else "Deleted: no")
         return
 
     if args.command == "clear-vault":
-        vault = la.rag.FileVault(args.vault_file)
+        vault = _file_vault(args.vault_file, args)
         vault.clear()
         print("Vault cleared")
         return
 
     if args.command == "purge-expired":
-        vault = la.rag.FileVault(args.vault_file)
+        vault = _file_vault(args.vault_file, args)
         deleted = vault.purge_expired()
         print(f"Expired mappings deleted: {deleted}")
         return
@@ -216,20 +267,28 @@ def _run_rag_cli(argv):
 
     text = _read_text(args.input_file, args.encoding)
     if args.command == "restore":
-        vault = la.rag.FileVault(args.vault)
+        vault = _file_vault(args.vault, args)
         sanitizer = la.rag.TextSanitizer(vault=vault)
         allowed_types = _parse_rule_names(args.allowed_types) if args.allowed_types else None
-        result = sanitizer.deanonymize(text, policy=args.policy, allowed_entity_types=allowed_types)
+        token_scope = _read_token_scope(args.scope_file) if args.scope_file else None
+        result = sanitizer.deanonymize(
+            text,
+            policy=args.policy,
+            allowed_entity_types=allowed_types,
+            token_scope=token_scope,
+        )
     else:
         enabled_rules = _parse_rule_names(args.rules) if args.rules else None
-        vault = la.rag.FileVault(args.vault, default_ttl_seconds=args.ttl_seconds)
+        vault = _file_vault(args.vault, args, default_ttl_seconds=args.ttl_seconds)
         sanitizer = la.rag.TextSanitizer(
             vault=vault,
             enabled_rules=enabled_rules,
             profile=args.profile,
             business_mode=args.business_mode,
         )
-        result = sanitizer.sanitize(text)
+        result, token_scope = sanitizer.sanitize_with_scope(text)
+        if args.scope_file:
+            _write_token_scope(args.scope_file, token_scope)
 
     _write_text(args.output_file, result, args.encoding)
     print(f"Saved to {args.output_file}")
@@ -264,6 +323,8 @@ def main(argv=None):
 
     print("Done!")
     print(engine.generate_report())
+    if any(entry["status"] != "Success" for entry in engine.audit_log):
+        raise SystemExit(1)
 
 
 if __name__ == "__main__":

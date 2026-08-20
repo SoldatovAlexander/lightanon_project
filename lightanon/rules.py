@@ -1,6 +1,7 @@
 # lightanon/rules.py
 
 import hashlib
+import hmac
 import numpy as np
 import pandas as pd
 import polars as pl
@@ -28,15 +29,16 @@ class BaseRule:
 
 
 class Hash(BaseRule):
-    def __init__(self, salt: str = ""):
+    def __init__(self, salt: str):
         super().__init__()
+        if not isinstance(salt, str) or not salt.strip():
+            raise ValueError("Hash requires a non-empty secret salt")
         self.salt = salt
         self.legal_method = "Introduction of Identifiers"
 
     def _hash_val(self, val) -> str:
         if val is None or pd.isna(val): return None
-        s = f"{str(val)}{self.salt}".encode('utf-8')
-        return hashlib.sha256(s).hexdigest()
+        return hmac.new(self.salt.encode("utf-8"), str(val).encode("utf-8"), hashlib.sha256).hexdigest()
 
     def apply(self, series: pd.Series) -> pd.Series:
         return series.apply(self._hash_val)
@@ -52,6 +54,8 @@ class Hash(BaseRule):
 class Mask(BaseRule):
     def __init__(self, visible_chars: int = 1):
         super().__init__()
+        if isinstance(visible_chars, bool) or not isinstance(visible_chars, int) or visible_chars < 0:
+            raise ValueError("visible_chars must be a non-negative integer")
         self.visible_chars = visible_chars
         self.legal_method = "Introduction of Identifiers"
 
@@ -60,7 +64,7 @@ class Mask(BaseRule):
             return None
         s = str(val)
         if len(s) <= self.visible_chars:
-            return s
+            return "*" * len(s)
         return s[:self.visible_chars] + "*" * (len(s) - self.visible_chars)
 
     def apply(self, series: pd.Series) -> pd.Series:

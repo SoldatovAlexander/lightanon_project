@@ -11,19 +11,22 @@ class Patterns:
 
     # Phone (RU): Matches +7, 8, with brackets or dashes.
     # Ex: +7 (999) 123-45-67, 89991234567
-    PHONE_RU = r'(?:\+7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}'
+    PHONE_RU = r'(?<!\d)(?:\+7|8)[\s\-]?\(?\d{3}\)?[\s\-]?\d{3}[\s\-]?\d{2}[\s\-]?\d{2}(?!\d)'
 
     # --- DOCUMENTS (RUSSIA) ---
     # Passport RF: Series (4 digits) + Number (6 digits).
     # Requires a separator before the 6-digit number to avoid matching 10-digit INN.
     # Ex: 45 00 123456, 4500 123456
-    PASSPORT_RU = r'\b\d{2}[\s\-]?\d{2}[\s\-]+\d{6}\b'
+    PASSPORT_RU = (
+        r'(?i:\bпаспорт\s*(?:серия\s*)?\d{2}[\s\-]?\d{2}\s*(?:№|номер|n)?\s*\d{6}\b)'
+        r'|\b\d{2}[\s\-]?\d{2}[\s\-]+\d{6}\b'
+    )
 
     # SNILS: 11 digits, often 123-456-789 00
     SNILS = r'\b\d{3}[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{2}\b'
 
     # INN (Tax ID): 10 or 12 digits
-    INN = r'\b\d{10}\b|\b\d{12}\b'
+    INN = r'\b(?:\d{10}|\d{12})\b'
 
     # --- ONLINE IDENTIFIERS ---
     # Combined nickname/login + resource. Tokenize the full pair because the
@@ -142,4 +145,7 @@ class Patterns:
     # Warning: Regex for names is never 100% accurate.
     # Matches: Capitalized Cyrillic words (Name Surname)
     # Ex: Иван Иванов, Петров П.П.
-    NAME_RU_BROAD = r'\b[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+)?\b'
+    NAME_RU_BROAD = (
+        r'\b(?:[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+)?'
+        r'|[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.\s*[А-ЯЁ]\.)(?!\w)'
+    )

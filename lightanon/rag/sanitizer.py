@@ -1,11 +1,12 @@
 import re
-import uuid
-from typing import Any, Dict, Iterable, List, Optional, Tuple
+import secrets
+from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 from .vault import BaseVault, MemoryVault
 from .patterns import Patterns
 
 
 class TextSanitizer:
+    TOKEN_PATTERN = re.compile(r"\[[A-Z][A-Z0-9_]*_[a-f0-9]{8}(?:[a-f0-9]{24})?\]")
     AVAILABLE_RULES: Dict[str, str] = {
         "COUNTERPARTY_REQUISITES": Patterns.COUNTERPARTY_REQUISITES,
         "BUSINESS_REQUISITES": Patterns.BUSINESS_REQUISITES,
@@ -173,7 +174,7 @@ class TextSanitizer:
         return entity_type
 
     def _make_token(self, entity_type: str) -> str:
-        uid = str(uuid.uuid4())[:8]
+        uid = secrets.token_hex(16)
         return f"[{entity_type}_{uid}]"
 
     def _get_or_create_token(self, entity_type: str, real_value: str) -> str:
@@ -182,6 +183,8 @@ class TextSanitizer:
             return existing_token
 
         token = self._make_token(entity_type)
+        while self.vault.get_value(token) is not None:
+            token = self._make_token(entity_type)
         self.vault.save(token, real_value)
         return token
 
@@ -191,15 +194,23 @@ class TextSanitizer:
         Input: "Call Ivan at +7999..."
         Output: "Call [PERSON_a1] at [PHONE_b2]..."
         """
+        clean, _ = self.sanitize_with_scope(text)
+        return clean
+
+    def sanitize_with_scope(self, text: str) -> Tuple[str, Dict[str, int]]:
+        """Sanitize text and return a bounded restoration scope for its tokens."""
         replacements = []
         for start, end, entity_type, real_value in self._find_entities(text):
             token = self._get_or_create_token(entity_type, real_value)
             replacements.append((start, end, token))
 
         if not replacements:
-            return text
+            return text, {}
 
-        return self._apply_replacements(text, replacements)
+        scope: Dict[str, int] = {}
+        for _, _, token in replacements:
+            scope[token] = scope.get(token, 0) + 1
+        return self._apply_replacements(text, replacements), scope
 
     def _find_entities(self, text: str) -> List[Tuple[int, int, str, str]]:
         replacements = []
@@ -283,8 +294,9 @@ class TextSanitizer:
     def deanonymize_metadata(
         self,
         metadata: Dict[str, Any],
-        policy: str = "restore",
+        policy: str = "mask",
         allowed_entity_types: Optional[Iterable[str]] = None,
+        token_scope: Optional[Mapping[str, int]] = None,
     ) -> Dict[str, Any]:
         """
         Recursively deanonymize string values in RAG metadata.
@@ -292,7 +304,9 @@ class TextSanitizer:
         """
         if not isinstance(metadata, dict):
             raise ValueError("metadata must be a dictionary")
-        return self._deanonymize_metadata_value(metadata, policy, allowed_entity_types)
+        allowed_types = self._allowed_types(allowed_entity_types)
+        scope_counts = self._scope_counts(policy, token_scope)
+        return self._deanonymize_metadata_value(metadata, policy, allowed_types, scope_counts)
 
     def sanitize_document(
         self,
@@ -310,18 +324,17 @@ class TextSanitizer:
         self,
         text: str,
         metadata: Optional[Dict[str, Any]] = None,
-        policy: str = "restore",
+        policy: str = "mask",
         allowed_entity_types: Optional[Iterable[str]] = None,
+        token_scope: Optional[Mapping[str, int]] = None,
     ) -> Tuple[str, Dict[str, Any]]:
         """
         Deanonymize RAG document text and metadata with the same policy.
         """
-        restored_text = self.deanonymize(text, policy=policy, allowed_entity_types=allowed_entity_types)
-        restored_metadata = self.deanonymize_metadata(
-            metadata or {},
-            policy=policy,
-            allowed_entity_types=allowed_entity_types,
-        )
+        allowed_types = self._allowed_types(allowed_entity_types)
+        scope_counts = self._scope_counts(policy, token_scope)
+        restored_text = self._deanonymize_text(text, policy, allowed_types, scope_counts)
+        restored_metadata = self._deanonymize_metadata_value(metadata or {}, policy, allowed_types, scope_counts)
         return restored_text, restored_metadata
 
     def _sanitize_metadata_value(self, value: Any) -> Any:
@@ -341,61 +354,94 @@ class TextSanitizer:
         self,
         value: Any,
         policy: str,
-        allowed_entity_types: Optional[Iterable[str]],
+        allowed_types: Optional[set],
+        scope_counts: Optional[Dict[str, int]],
     ) -> Any:
         if isinstance(value, str):
-            return self.deanonymize(value, policy=policy, allowed_entity_types=allowed_entity_types)
+            return self._deanonymize_text(value, policy, allowed_types, scope_counts)
         if isinstance(value, dict):
             return {
-                key: self._deanonymize_metadata_value(item, policy, allowed_entity_types)
+                key: self._deanonymize_metadata_value(item, policy, allowed_types, scope_counts)
                 for key, item in value.items()
             }
         if isinstance(value, list):
-            return [self._deanonymize_metadata_value(item, policy, allowed_entity_types) for item in value]
+            return [self._deanonymize_metadata_value(item, policy, allowed_types, scope_counts) for item in value]
         if isinstance(value, tuple):
-            return tuple(self._deanonymize_metadata_value(item, policy, allowed_entity_types) for item in value)
+            return tuple(self._deanonymize_metadata_value(item, policy, allowed_types, scope_counts) for item in value)
         if isinstance(value, set):
-            return {self._deanonymize_metadata_value(item, policy, allowed_entity_types) for item in value}
+            return {self._deanonymize_metadata_value(item, policy, allowed_types, scope_counts) for item in value}
         return value
 
     def deanonymize(
         self,
         text: str,
-        policy: str = "restore",
+        policy: str = "mask",
         allowed_entity_types: Optional[Iterable[str]] = None,
+        token_scope: Optional[Mapping[str, int]] = None,
     ) -> str:
         """
-        Restores real data from tokens.
+        Masks tokens by default or restores values within an explicit token scope.
         Input: "Hello [PERSON_a1]"
-        Output: "Hello Ivan"
+        Output: "Hello [PERSON]" by default
         """
-        allowed_types = None
-        if allowed_entity_types is not None:
-            allowed_types = {self._normalize_entity_type(entity_type) for entity_type in allowed_entity_types}
+        allowed_types = self._allowed_types(allowed_entity_types)
+        scope_counts = self._scope_counts(policy, token_scope)
+        return self._deanonymize_text(text, policy, allowed_types, scope_counts)
+
+    def _allowed_types(self, allowed_entity_types: Optional[Iterable[str]]) -> Optional[set]:
+        if allowed_entity_types is None:
+            return None
+        return {self._normalize_entity_type(entity_type) for entity_type in allowed_entity_types}
+
+    def _scope_counts(
+        self,
+        policy: str,
+        token_scope: Optional[Mapping[str, int]],
+    ) -> Optional[Dict[str, int]]:
         if policy not in {"restore", "no_personal_data", "mask", "restore_allowed_only"}:
             raise ValueError(f"Unknown deanonymization policy: {policy}")
+        if policy not in {"restore", "restore_allowed_only"}:
+            return None
+        if token_scope is None:
+            raise ValueError("token_scope is required for restoration policies")
+        if not isinstance(token_scope, Mapping):
+            raise ValueError("token_scope must be a mapping of tokens to positive occurrence counts")
 
-        restored_text = text
-        # Regex to find our tokens: [TYPE_hexcode]
-        token_pattern = r'\[[A-Z][A-Z0-9_]*_[a-f0-9]{8}\]'
+        scope_counts: Dict[str, int] = {}
+        for token, count in token_scope.items():
+            if not isinstance(token, str) or not self.TOKEN_PATTERN.fullmatch(token):
+                raise ValueError("token_scope contains an invalid token")
+            if isinstance(count, bool) or not isinstance(count, int) or count <= 0:
+                raise ValueError("token_scope counts must be positive integers")
+            scope_counts[token] = count
+        return scope_counts
 
-        matches = list(set(re.findall(token_pattern, text)))
-
-        for token in matches:
+    def _deanonymize_text(
+        self,
+        text: str,
+        policy: str,
+        allowed_types: Optional[set],
+        scope_counts: Optional[Dict[str, int]],
+    ) -> str:
+        def replace_token(match: re.Match) -> str:
+            token = match.group()
             entity_type = self._entity_type_from_token(token)
             if policy == "no_personal_data":
-                continue
+                return token
             if policy == "mask":
-                restored_text = restored_text.replace(token, f"[{entity_type}]")
-                continue
+                return f"[{entity_type}]"
             if policy == "restore_allowed_only" and (allowed_types is None or entity_type not in allowed_types):
-                continue
+                return token
+            if scope_counts is None or scope_counts.get(token, 0) <= 0:
+                return token
 
             real_value = self.vault.get_value(token)
             if real_value:
-                restored_text = restored_text.replace(token, real_value)
+                scope_counts[token] -= 1
+                return real_value
+            return token
 
-        return restored_text
+        return self.TOKEN_PATTERN.sub(replace_token, text)
 
     def _entity_type_from_token(self, token: str) -> str:
         return token[1:-1].rsplit("_", 1)[0]

@@ -16,6 +16,8 @@ class MultiplicativeNoise(BaseRule):
         std_dev_percent: 0.05 означает отклонение примерно на 5%
         """
         super().__init__()
+        if std_dev_percent < 0:
+            raise ValueError("std_dev_percent must be non-negative")
         self.std = std_dev_percent
         self.legal_method = "Change of Composition (Method 2) - Perturbation"
 
@@ -23,9 +25,8 @@ class MultiplicativeNoise(BaseRule):
         if not pd.api.types.is_numeric_dtype(series):
             raise ValueError("MultiplicativeNoise can only be applied to numeric columns")
 
-        # Генерируем коэффициенты вокруг 1.0 (например, от 0.95 до 1.05)
-        # abs() нужен, чтобы случайно не сменить знак транзакции (если это не разрешено)
-        noise = np.random.normal(1.0, self.std, size=len(series))
+        # Preserve the sign of debits/credits even for an extreme random draw.
+        noise = np.abs(np.random.normal(1.0, self.std, size=len(series)))
 
         return series * noise
 

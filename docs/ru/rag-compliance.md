@@ -132,18 +132,20 @@ lightanon rag scan input.txt --profile ru_152 --business-mode company
 Не всегда нужно восстанавливать ПД в финальном ответе LLM. Для безопасного вывода используйте политики:
 
 ```python
+clean, token_scope = sanitizer.sanitize_with_scope(prompt)
 sanitizer.deanonymize(answer, policy="no_personal_data")
 sanitizer.deanonymize(answer, policy="mask")
-sanitizer.deanonymize(answer, policy="restore_allowed_only", allowed_entity_types=["EMAIL"])
+sanitizer.deanonymize(answer, policy="restore_allowed_only", allowed_entity_types=["EMAIL"], token_scope=token_scope)
 ```
 
 CLI:
 
 ```bash
 lightanon rag restore answer.txt restored.txt --vault vault.json --policy mask
+lightanon rag restore answer.txt restored.txt --vault vault.json --policy restore --scope-file scope.json
 ```
 
-Рекомендуемая практика: по умолчанию использовать `mask` или `no_personal_data`, а `restore` включать только там, где восстановление действительно нужно и допустимо.
+Рекомендуемая практика: по умолчанию использовать `mask` или `no_personal_data`, а `restore` включать только там, где восстановление действительно нужно и допустимо; для него нужен scope из `sanitize_with_scope(...)` или `sanitize --scope-file`.
 
 ## Vault
 

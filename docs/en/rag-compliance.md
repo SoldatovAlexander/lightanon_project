@@ -130,18 +130,20 @@ Reports contain counters and risk level, not original values.
 Generated answers do not always need original values restored. Use restoration policies:
 
 ```python
+clean, token_scope = sanitizer.sanitize_with_scope(prompt)
 sanitizer.deanonymize(answer, policy="no_personal_data")
 sanitizer.deanonymize(answer, policy="mask")
-sanitizer.deanonymize(answer, policy="restore_allowed_only", allowed_entity_types=["EMAIL"])
+sanitizer.deanonymize(answer, policy="restore_allowed_only", allowed_entity_types=["EMAIL"], token_scope=token_scope)
 ```
 
 CLI:
 
 ```bash
 lightanon rag restore answer.txt restored.txt --vault vault.json --policy mask
+lightanon rag restore answer.txt restored.txt --vault vault.json --policy restore --scope-file scope.json
 ```
 
-Prefer `mask` or `no_personal_data` by default. Use `restore` only when original-value disclosure is necessary and permitted.
+Prefer `mask` or `no_personal_data` by default. Use `restore` only when original-value disclosure is necessary and permitted; it requires a scope from `sanitize_with_scope(...)` or `sanitize --scope-file`.
 
 ## Vault Handling
 

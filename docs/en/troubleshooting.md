@@ -16,13 +16,15 @@ Cause:
 Fix:
 - verify class name and constructor parameters.
 
-## A column is not transformed in `polars` mode
+## A column becomes empty after processing
 Cause:
-- rule does not implement `apply_polars`.
+- the rule failed;
+- for fail-closed behavior, LightAnon does not leave original values in the output file.
 
 Fix:
 - inspect `engine.generate_report()` for `[FAIL]` entries,
-- implement `apply_polars` for your custom rule.
+- fix rule parameters or the column data type,
+- for `polars`, implement `apply_polars` for your custom rule if it is missing.
 
 ## Stream processing is too slow
 Cause:

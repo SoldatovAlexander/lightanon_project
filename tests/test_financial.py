@@ -46,6 +46,13 @@ def test_multiplicative_noise_trend():
     assert diff_large > diff_small * 1000
 
 
+def test_multiplicative_noise_never_flips_transaction_sign(monkeypatch):
+    monkeypatch.setattr(np.random, "normal", lambda *args, **kwargs: np.array([-0.5, -2.0]))
+    result = la.financial.MultiplicativeNoise(std_dev_percent=1.0).apply(pd.Series([100.0, -100.0]))
+
+    assert result.tolist() == [50.0, -200.0]
+
+
 def test_credit_card_mask():
     """Проверка PCI DSS маскирования."""
     rule = la.financial.CreditCardMask()

@@ -1,5 +1,9 @@
 import json
 
+import pandas as pd
+import pytest
+from cryptography.fernet import Fernet
+
 from lightanon import cli
 
 
@@ -8,6 +12,7 @@ def test_rag_cli_sanitize_and_restore(tmp_path):
     sanitized_path = tmp_path / "sanitized.txt"
     restored_path = tmp_path / "restored.txt"
     vault_path = tmp_path / "vault.json"
+    scope_path = tmp_path / "scope.json"
 
     original = "Напишите Иванов Иван на ivan@example.com или +7 900 123-45-67."
     input_path.write_text(original, encoding="utf-8")
@@ -20,6 +25,8 @@ def test_rag_cli_sanitize_and_restore(tmp_path):
             str(sanitized_path),
             "--vault",
             str(vault_path),
+            "--scope-file",
+            str(scope_path),
         ]
     )
 
@@ -36,13 +43,18 @@ def test_rag_cli_sanitize_and_restore(tmp_path):
             str(restored_path),
             "--vault",
             str(vault_path),
+            "--policy",
+            "restore",
+            "--scope-file",
+            str(scope_path),
         ]
     )
 
     assert restored_path.read_text(encoding="utf-8") == original
+    assert json.loads(scope_path.read_text(encoding="utf-8"))["version"] == 1
 
 
-def test_rag_cli_restore_mask_policy(tmp_path):
+def test_rag_cli_restore_defaults_to_mask_and_requires_scope_for_restore(tmp_path):
     input_path = tmp_path / "input.txt"
     sanitized_path = tmp_path / "sanitized.txt"
     restored_path = tmp_path / "restored.txt"
@@ -50,6 +62,92 @@ def test_rag_cli_restore_mask_policy(tmp_path):
     input_path.write_text("Email: ivan@example.com", encoding="utf-8")
 
     cli.main(["rag", "sanitize", str(input_path), str(sanitized_path), "--vault", str(vault_path)])
+    cli.main(["rag", "restore", str(sanitized_path), str(restored_path), "--vault", str(vault_path)])
+    assert restored_path.read_text(encoding="utf-8") == "Email: [EMAIL]"
+
+    with pytest.raises(ValueError, match="token_scope is required"):
+        cli.main(
+            [
+                "rag",
+                "restore",
+                str(sanitized_path),
+                str(restored_path),
+                "--vault",
+                str(vault_path),
+                "--policy",
+                "restore",
+            ]
+        )
+
+
+def test_rag_cli_uses_encryption_key_from_environment(tmp_path, monkeypatch):
+    input_path = tmp_path / "input.txt"
+    sanitized_path = tmp_path / "sanitized.txt"
+    vault_path = tmp_path / "vault.json"
+    monkeypatch.setenv("LIGHTANON_TEST_VAULT_KEY", Fernet.generate_key().decode("utf-8"))
+    input_path.write_text("Email: ivan@example.com", encoding="utf-8")
+
+    cli.main(
+        [
+            "rag",
+            "sanitize",
+            str(input_path),
+            str(sanitized_path),
+            "--vault",
+            str(vault_path),
+            "--vault-key-env",
+            "LIGHTANON_TEST_VAULT_KEY",
+        ]
+    )
+
+    assert "ivan@example.com" not in vault_path.read_text(encoding="utf-8")
+
+
+def test_cli_exits_nonzero_and_writes_fail_closed_output(tmp_path, capsys):
+    input_path = tmp_path / "input.csv"
+    output_path = tmp_path / "output.csv"
+    schema_path = tmp_path / "schema.yaml"
+    input_path.write_text("salary,name\n100.0,Ivan\n-50.0,Petr\n3000.0,Anna\n", encoding="utf-8")
+    schema_path.write_text(
+        "salary:\n"
+        "  method: GaussianNoise\n"
+        "  params:\n"
+        "    std: 0.1\n",
+        encoding="utf-8",
+    )
+
+    with pytest.raises(SystemExit) as exc:
+        cli.main([str(input_path), str(output_path), "-c", str(schema_path)])
+
+    assert exc.value.code == 1
+    clean_df = pd.read_csv(output_path)
+    assert clean_df["salary"].isna().all()
+    assert clean_df["name"].tolist() == ["Ivan", "Petr", "Anna"]
+
+    output = capsys.readouterr().out
+    assert "[FAIL] Column 'salary': Error:" in output
+
+
+def test_rag_cli_restore_mask_policy(tmp_path):
+    input_path = tmp_path / "input.txt"
+    sanitized_path = tmp_path / "sanitized.txt"
+    restored_path = tmp_path / "restored.txt"
+    vault_path = tmp_path / "vault.json"
+    scope_path = tmp_path / "scope.json"
+    input_path.write_text("Email: ivan@example.com", encoding="utf-8")
+
+    cli.main(
+        [
+            "rag",
+            "sanitize",
+            str(input_path),
+            str(sanitized_path),
+            "--vault",
+            str(vault_path),
+            "--scope-file",
+            str(scope_path),
+        ]
+    )
     cli.main(
         [
             "rag",
@@ -71,6 +169,7 @@ def test_rag_cli_restore_allowed_types_policy(tmp_path):
     sanitized_path = tmp_path / "sanitized.txt"
     restored_path = tmp_path / "restored.txt"
     vault_path = tmp_path / "vault.json"
+    scope_path = tmp_path / "scope.json"
     input_path.write_text("Email: ivan@example.com. ИНН 7707083893.", encoding="utf-8")
 
     cli.main(
@@ -83,6 +182,8 @@ def test_rag_cli_restore_allowed_types_policy(tmp_path):
             str(vault_path),
             "--profile",
             "ru_152",
+            "--scope-file",
+            str(scope_path),
         ]
     )
     cli.main(
@@ -97,6 +198,8 @@ def test_rag_cli_restore_allowed_types_policy(tmp_path):
             "restore_allowed_only",
             "--allowed-types",
             "EMAIL",
+            "--scope-file",
+            str(scope_path),
         ]
     )
 

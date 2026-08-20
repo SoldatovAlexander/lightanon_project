@@ -4,7 +4,17 @@ import os
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
+
+from cryptography.fernet import Fernet, InvalidToken
+
+
+def _parse_timestamp(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    if parsed.tzinfo is None:
+        return parsed.replace(tzinfo=timezone.utc)
+    return parsed.astimezone(timezone.utc)
+
 
 class BaseVault(abc.ABC):
     """
@@ -71,7 +81,7 @@ class MemoryVault(BaseVault):
         expires_at = self._token_metadata.get(token, {}).get("expires_at")
         if not expires_at:
             return False
-        return datetime.fromisoformat(expires_at) <= datetime.now(timezone.utc)
+        return _parse_timestamp(expires_at) <= datetime.now(timezone.utc)
 
     def get_value(self, token: str) -> Optional[str]:
         if self._is_expired(token):
@@ -128,13 +138,30 @@ class FileVault(BaseVault):
     """
     JSON-backed token storage for CLI and small local RAG workflows.
     """
-    def __init__(self, path: str, default_ttl_seconds: Optional[int] = None):
+    def __init__(
+        self,
+        path: str,
+        default_ttl_seconds: Optional[int] = None,
+        encryption_key: Optional[Union[str, bytes]] = None,
+    ):
         self.path = Path(path)
         self._token_to_val: Dict[str, str] = {}
         self._val_to_token: Dict[str, str] = {}
         self._token_metadata: Dict[str, Dict[str, str]] = {}
         self.default_ttl_seconds = default_ttl_seconds
+        self._fernet = self._build_fernet(encryption_key)
         self._load()
+
+    def _build_fernet(self, encryption_key: Optional[Union[str, bytes]]) -> Optional[Fernet]:
+        if encryption_key is None:
+            return None
+        key = encryption_key.encode("utf-8") if isinstance(encryption_key, str) else encryption_key
+        if not isinstance(key, bytes):
+            raise ValueError("encryption_key must be a Fernet key as str or bytes")
+        try:
+            return Fernet(key)
+        except (TypeError, ValueError) as exc:
+            raise ValueError("encryption_key must be a valid Fernet key") from exc
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
@@ -150,16 +177,24 @@ class FileVault(BaseVault):
         expires_at = self._token_metadata.get(token, {}).get("expires_at")
         if not expires_at:
             return False
-        return datetime.fromisoformat(expires_at) <= datetime.now(timezone.utc)
+        return _parse_timestamp(expires_at) <= datetime.now(timezone.utc)
 
     def _load(self) -> None:
         if not self.path.exists() or self.path.stat().st_size == 0:
             return
 
+        raw_data = self.path.read_bytes()
+        if self._fernet is not None and raw_data.startswith(b"gAAAA"):
+            try:
+                raw_data = self._fernet.decrypt(raw_data)
+            except InvalidToken as exc:
+                raise ValueError("Unable to decrypt vault with the supplied encryption key") from exc
+        elif raw_data.startswith(b"gAAAA"):
+            raise ValueError("Vault is encrypted; provide an encryption key")
+
         try:
-            with self.path.open("r", encoding="utf-8") as f:
-                data = json.load(f)
-        except json.JSONDecodeError as exc:
+            data = json.loads(raw_data.decode("utf-8"))
+        except (UnicodeDecodeError, json.JSONDecodeError) as exc:
             raise ValueError(f"Invalid vault JSON: {self.path}") from exc
 
         if not isinstance(data, dict):
@@ -240,17 +275,19 @@ class FileVault(BaseVault):
         }
         tmp_name = None
         try:
+            payload = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
+            if self._fernet is not None:
+                payload = self._fernet.encrypt(payload)
             with tempfile.NamedTemporaryFile(
-                "w",
-                encoding="utf-8",
+                "wb",
                 delete=False,
                 dir=self.path.parent,
                 prefix=f".{self.path.name}.",
                 suffix=".tmp",
             ) as f:
                 tmp_name = f.name
-                json.dump(data, f, ensure_ascii=False, indent=2)
-                f.write("\n")
+                os.chmod(tmp_name, 0o600)
+                f.write(payload)
             os.replace(tmp_name, self.path)
         finally:
             if tmp_name and os.path.exists(tmp_name):
@@ -261,8 +298,6 @@ class FileVault(BaseVault):
             self.delete_token(token)
             return None
         value = self._token_to_val.get(token)
-        if value is not None:
-            self._touch(token)
         return value
 
     def get_token(self, value: str) -> Optional[str]:
@@ -270,8 +305,6 @@ class FileVault(BaseVault):
         if token is not None and self._is_expired(token):
             self.delete_token(token)
             return None
-        if token is not None:
-            self._touch(token)
         return token
 
     def save(self, token: str, value: str, ttl_seconds: Optional[int] = None) -> None:
@@ -283,14 +316,6 @@ class FileVault(BaseVault):
         expires_at = self._expires_at(ttl_seconds)
         if expires_at is not None:
             self._token_metadata[token]["expires_at"] = expires_at
-        self._flush()
-
-    def _touch(self, token: str) -> None:
-        if token not in self._token_metadata:
-            now = self._now()
-            self._token_metadata[token] = {"created_at": now, "last_used_at": now}
-        else:
-            self._token_metadata[token]["last_used_at"] = self._now()
         self._flush()
 
     def delete_token(self, token: str) -> bool:

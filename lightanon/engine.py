@@ -44,6 +44,7 @@ class Engine:
                     }
                 )
             except Exception as exc:
+                df_clean[column] = pd.NA
                 self.audit_log.append(
                     {
                         "column": column,
@@ -81,6 +82,7 @@ class Engine:
                     }
                 )
             except Exception as exc:
+                expressions.append(pl.lit(None).alias(column))
                 self.audit_log.append(
                     {
                         "column": column,
@@ -95,7 +97,7 @@ class Engine:
         return df.with_columns(expressions)
 
     def generate_report(self) -> str:
-        report = ["COMPLIANCE AUDIT REPORT (Roskomnadzor Order No. 996)", "=" * 60]
+        report = ["ANONYMIZATION PROCESSING REPORT", "=" * 60]
         methods_used = set()
 
         if not self.audit_log:
@@ -106,7 +108,7 @@ class Engine:
             if status == "Success":
                 report.append(
                     f"[PASS] Column '{entry['column']}': Applied {entry['rule']}\n"
-                    f"       -> Compliance: {entry['legal_basis']}"
+                    f"       -> Declared method: {entry['legal_basis']}"
                 )
                 methods_used.add(entry["legal_basis"])
             else:
@@ -115,11 +117,12 @@ class Engine:
         report.append("-" * 60)
         report.append("SUMMARY:")
         report.append(f"Total Columns Processed: {len(self.audit_log)}")
-        report.append("Legal Methods Utilized:")
+        report.append("Declared Methods:")
         if methods_used:
             for method in sorted(methods_used):
                 report.append(f" - {method}")
         else:
             report.append(" - None")
 
+        report.append("This technical report is not a legal compliance determination.")
         return "\n".join(report)

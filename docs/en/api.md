@@ -33,7 +33,8 @@ Main methods:
 
 Audit behavior:
 - `run(...)` resets `audit_log`,
-- each schema column is marked with `Success`, `Missing column`, or `Error: ...`.
+- each schema column is marked with `Success`, `Missing column`, or `Error: ...`,
+- if a rule fails, original values in that column are not preserved in the output: pandas columns are replaced with `pd.NA`, and polars columns with `null`.
 
 ## `BaseRule`
 
@@ -48,13 +49,15 @@ Interface methods:
 
 ## Core Rules (`lightanon.rules`)
 
-### `Hash(salt: str = "")`
-- deterministic SHA-256 hash,
+### `Hash(salt: str)`
+- deterministic HMAC-SHA-256 hash,
+- requires a non-empty secret salt,
 - good for pseudonymous joins,
 - handles `None/NaN` as `None`.
 
 ### `Mask(visible_chars: int = 1)`
 - keeps first `visible_chars` chars and masks the rest with `*`,
+- fully masks values whose length is not greater than `visible_chars`,
 - returns `None` for `None/NaN`.
 
 ### `GaussianNoise(std: float = 0.1)`
@@ -85,7 +88,7 @@ Interface methods:
 The RAG block is not a set of column-level `BaseRule` classes. It is a separate reversible pipeline for free text:
 1. `sanitize(text)` replaces sensitive values with tokens,
 2. the external LLM/RAG pipeline sees only tokens,
-3. `deanonymize(text)` restores original values in the final answer.
+3. `deanonymize(text)` masks tokens by default; explicit restoration is scoped to the sanitized input.
 
 Public exports:
 - `TextSanitizer`
@@ -106,13 +109,14 @@ Public exports:
 
 Main methods:
 - `sanitize(text: str) -> str`
+- `sanitize_with_scope(text: str) -> Tuple[str, Dict[str, int]]`
 - `sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]`
-- `deanonymize_metadata(metadata: Dict[str, Any], policy: str = "restore", allowed_entity_types=None) -> Dict[str, Any]`
+- `deanonymize_metadata(metadata: Dict[str, Any], policy: str = "mask", allowed_entity_types=None, token_scope=None) -> Dict[str, Any]`
 - `sanitize_document(text: str, metadata: Optional[Dict[str, Any]] = None) -> Tuple[str, Dict[str, Any]]`
-- `deanonymize_document(text: str, metadata: Optional[Dict[str, Any]] = None, policy: str = "restore", allowed_entity_types=None) -> Tuple[str, Dict[str, Any]]`
+- `deanonymize_document(text: str, metadata: Optional[Dict[str, Any]] = None, policy: str = "mask", allowed_entity_types=None, token_scope=None) -> Tuple[str, Dict[str, Any]]`
 - `scan(text: str) -> Dict[str, object]`
 - `sanitize_with_report(text: str) -> Tuple[str, Dict[str, object]]`
-- `deanonymize(text: str, policy: str = "restore", allowed_entity_types=None) -> str`
+- `deanonymize(text: str, policy: str = "mask", allowed_entity_types=None, token_scope=None) -> str`
 - `add_rule(name: str, pattern: str)`
 
 Built-in rules: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`, `BUSINESS_REQUISITES`, `COUNTERPARTY_REQUISITES`, `ORGANIZATION_NAME`, `COMPANY_INN`, `KPP`, `OGRN`, `OKPO`, `LEGAL_ADDRESS`, `BANK_ACCOUNT`, `CORRESPONDENT_ACCOUNT`, `BIK`.
@@ -126,9 +130,9 @@ Example:
 from lightanon.rag import TextSanitizer
 
 sanitizer = TextSanitizer()
-clean = sanitizer.sanitize("Ivan Ivanov, email ivan@example.com")
+clean, token_scope = sanitizer.sanitize_with_scope("Ivan Ivanov, email ivan@example.com")
 answer = f"Contact: {clean}"
-restored = sanitizer.deanonymize(answer)
+restored = sanitizer.deanonymize(answer, policy="restore", token_scope=token_scope)
 ```
 
 `sanitize_metadata(...)` recursively sanitizes string values in `dict`, `list`, `tuple`, and `set` containers while preserving non-string values. This is useful for RAG documents where personal data may live in `source_url`, `author`, `tags`, `file_path`, and other metadata fields.
@@ -137,7 +141,7 @@ restored = sanitizer.deanonymize(answer)
 
 `scan(...)` detects entities without replacing text or writing to the vault. The report contains type counters and risk level, but not original values.
 `sanitize_with_report(...)` returns sanitized text plus a report with entities before processing and residual entities after processing.
-`deanonymize(...)` supports restoration policies: `restore` restores all values, `no_personal_data` leaves tokens unchanged, `mask` replaces tokens with `[TYPE]`, and `restore_allowed_only` restores only types listed in `allowed_entity_types`.
+`deanonymize(...)` defaults to `mask`; `no_personal_data` leaves tokens unchanged. `restore` and `restore_allowed_only` require a token scope from `sanitize_with_scope(...)`, so only tokens from that input and only their original occurrence counts may be restored.
 
 ### `BaseVault`
 Abstract token-storage interface:
@@ -148,6 +152,9 @@ Abstract token-storage interface:
 - `delete_value(value: str) -> bool`
 - `clear() -> None`
 - `purge_expired() -> int`
+
+### `FileVault(path, default_ttl_seconds=None, encryption_key=None)`
+Local JSON vault. Pass a Fernet key through `encryption_key` to encrypt stored mappings at rest; without it, the JSON remains readable for backward compatibility.
 
 ### `MemoryVault`
 In-memory `BaseVault` implementation.

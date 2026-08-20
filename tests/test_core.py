@@ -1,6 +1,7 @@
 import pytest
 import pandas as pd
 import numpy as np
+import polars as pl
 import lightanon as la
 
 
@@ -36,6 +37,17 @@ def test_hash_salting():
     assert r1.apply(val)[0] != r2.apply(val)[0]
 
 
+def test_hash_requires_non_empty_secret_salt():
+    with pytest.raises(ValueError, match="non-empty secret salt"):
+        la.rules.Hash("")
+
+
+def test_mask_hides_values_not_longer_than_visible_prefix():
+    rule = la.rules.Mask(visible_chars=2)
+
+    assert rule.apply(pd.Series(["A", "AB", "ABC"])).tolist() == ["*", "**", "AB*"]
+
+
 def test_masking():
     """Проверка: Маскирование скрывает часть строки."""
     rule = la.rules.Mask(visible_chars=1)
@@ -43,7 +55,7 @@ def test_masking():
     res = rule.apply(s)
 
     assert res[0] == "I*****"
-    assert res[1] == "A"  # Если длина <= visible, оставляем как есть или * (зависит от логики, тут проверка на crash)
+    assert res[1] == "*"
     assert pd.isna(res[2])  # None остается None
 
 
@@ -77,7 +89,7 @@ def test_gaussian_noise_stats():
 def test_engine_integration(sample_df):
     """Проверка: Движок корректно обрабатывает DataFrame."""
     schema = {
-        "email": la.rules.Hash(),
+        "email": la.rules.Hash(salt="test_salt"),
         "age": la.rules.Generalize(step=10)
     }
     engine = la.Engine(schema)
@@ -91,12 +103,54 @@ def test_engine_integration(sample_df):
     assert clean_df["salary"][0] == sample_df["salary"][0]
 
 
+def test_engine_replaces_failed_pandas_column_with_na():
+    """Rule errors must not leave raw source values in the output."""
+    df = pd.DataFrame({"salary": [100.0, -50.0, 3000.0]})
+    engine = la.Engine({"salary": la.rules.GaussianNoise(std=0.1)})
+
+    clean_df = engine.run(df)
+
+    assert clean_df["salary"].isna().all()
+    assert engine.audit_log[0]["status"].startswith("Error:")
+
+
+def test_engine_replaces_failed_financial_column_with_na():
+    df = pd.DataFrame({"amount": ["100", "200", "300"]})
+    engine = la.Engine({"amount": la.financial.MultiplicativeNoise()})
+
+    clean_df = engine.run(df)
+
+    assert clean_df["amount"].isna().all()
+    assert engine.audit_log[0]["status"].startswith("Error:")
+
+
+def test_engine_replaces_failed_top_coding_fixed_batch_column_with_na():
+    df = pd.DataFrame({"amount": [100.0, 20000.0, 300.0]})
+    engine = la.Engine({"amount": la.financial.TopCodingFixed(cap_value=10000.0)})
+
+    clean_df = engine.run(df)
+
+    assert clean_df["amount"].isna().all()
+    assert engine.audit_log[0]["status"].startswith("Error:")
+
+
+def test_engine_replaces_failed_polars_column_with_null():
+    df = pl.DataFrame({"amount": ["100", "200", "300"]})
+    engine = la.Engine({"amount": la.financial.MultiplicativeNoise()})
+
+    clean_df = engine.run(df)
+
+    assert clean_df["amount"].null_count() == clean_df.height
+    assert engine.audit_log[0]["status"].startswith("Error:")
+
+
 def test_report_generation(sample_df):
     """Проверка: Отчет генерируется и содержит ключевые слова."""
-    schema = {"email": la.rules.Hash()}
+    schema = {"email": la.rules.Hash(salt="test_salt")}
     engine = la.Engine(schema)
     engine.run(sample_df)
     report = engine.generate_report()
 
-    assert "COMPLIANCE AUDIT REPORT" in report
+    assert "ANONYMIZATION PROCESSING REPORT" in report
     assert "Introduction of Identifiers" in report  # Метод из 152-ФЗ
+    assert "not a legal compliance determination" in report

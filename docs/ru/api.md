@@ -33,7 +33,8 @@ import lightanon as la
 
 Поведение аудита:
 - `run(...)` очищает `audit_log`,
-- для каждой колонки фиксируется `Success`, `Missing column` или `Error: ...`.
+- для каждой колонки фиксируется `Success`, `Missing column` или `Error: ...`,
+- если правило падает с ошибкой, исходные значения этой колонки не сохраняются в выходе: для pandas колонка заменяется на `pd.NA`, для polars - на `null`.
 
 ## `BaseRule`
 
@@ -48,13 +49,15 @@ import lightanon as la
 
 ## Базовые правила (`lightanon.rules`)
 
-### `Hash(salt: str = "")`
-- детерминированный SHA-256,
+### `Hash(salt: str)`
+- детерминированный HMAC-SHA-256,
+- требует непустой секретный salt,
 - удобно для стабильных псевдонимизированных JOIN,
 - `None/NaN` -> `None`.
 
 ### `Mask(visible_chars: int = 1)`
 - оставляет первые `visible_chars`, остальное заменяет на `*`,
+- полностью маскирует значения длиной не больше `visible_chars`,
 - `None/NaN` -> `None`.
 
 ### `GaussianNoise(std: float = 0.1)`
@@ -85,7 +88,7 @@ import lightanon as la
 RAG-блок не является набором `BaseRule` для колонок. Это отдельный обратимый пайплайн для свободного текста:
 1. `sanitize(text)` заменяет чувствительные значения на токены,
 2. внешний LLM/RAG-пайплайн работает только с токенами,
-3. `deanonymize(text)` восстанавливает исходные значения в финальном ответе.
+3. `deanonymize(text)` по умолчанию маскирует токены; явное восстановление ограничено очищенным входом.
 
 Публичные экспорты:
 - `TextSanitizer`
@@ -106,13 +109,14 @@ RAG-блок не является набором `BaseRule` для колоно
 
 Основные методы:
 - `sanitize(text: str) -> str`
+- `sanitize_with_scope(text: str) -> Tuple[str, Dict[str, int]]`
 - `sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]`
-- `deanonymize_metadata(metadata: Dict[str, Any], policy: str = "restore", allowed_entity_types=None) -> Dict[str, Any]`
+- `deanonymize_metadata(metadata: Dict[str, Any], policy: str = "mask", allowed_entity_types=None, token_scope=None) -> Dict[str, Any]`
 - `sanitize_document(text: str, metadata: Optional[Dict[str, Any]] = None) -> Tuple[str, Dict[str, Any]]`
-- `deanonymize_document(text: str, metadata: Optional[Dict[str, Any]] = None, policy: str = "restore", allowed_entity_types=None) -> Tuple[str, Dict[str, Any]]`
+- `deanonymize_document(text: str, metadata: Optional[Dict[str, Any]] = None, policy: str = "mask", allowed_entity_types=None, token_scope=None) -> Tuple[str, Dict[str, Any]]`
 - `scan(text: str) -> Dict[str, object]`
 - `sanitize_with_report(text: str) -> Tuple[str, Dict[str, object]]`
-- `deanonymize(text: str, policy: str = "restore", allowed_entity_types=None) -> str`
+- `deanonymize(text: str, policy: str = "mask", allowed_entity_types=None, token_scope=None) -> str`
 - `add_rule(name: str, pattern: str)`
 
 Встроенные правила: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, `ONLINE_ACCOUNT`, `PROFILE_URL`, `SOCIAL_HANDLE`, `USERNAME`, `BUSINESS_REQUISITES`, `COUNTERPARTY_REQUISITES`, `ORGANIZATION_NAME`, `COMPANY_INN`, `KPP`, `OGRN`, `OKPO`, `LEGAL_ADDRESS`, `BANK_ACCOUNT`, `CORRESPONDENT_ACCOUNT`, `BIK`.
@@ -126,9 +130,9 @@ RAG-блок не является набором `BaseRule` для колоно
 from lightanon.rag import TextSanitizer
 
 sanitizer = TextSanitizer()
-clean = sanitizer.sanitize("Иванов Иван, email ivan@example.com")
+clean, token_scope = sanitizer.sanitize_with_scope("Иванов Иван, email ivan@example.com")
 answer = f"Контакт: {clean}"
-restored = sanitizer.deanonymize(answer)
+restored = sanitizer.deanonymize(answer, policy="restore", token_scope=token_scope)
 ```
 
 `sanitize_metadata(...)` рекурсивно обрабатывает строковые значения в `dict`, `list`, `tuple` и `set`, сохраняя нестроковые значения. Это полезно для RAG-документов, где персональные данные могут находиться в `source_url`, `author`, `tags`, `file_path` и других metadata-полях.
@@ -137,7 +141,7 @@ restored = sanitizer.deanonymize(answer)
 
 `scan(...)` ищет сущности без замены текста и без записи в vault. Отчет содержит счетчики по типам и уровень риска, но не исходные значения.
 `sanitize_with_report(...)` возвращает очищенный текст и отчет с сущностями до обработки и остаточными сущностями после обработки.
-`deanonymize(...)` поддерживает политики восстановления: `restore` восстанавливает все значения, `no_personal_data` оставляет токены, `mask` заменяет токены на `[TYPE]`, `restore_allowed_only` восстанавливает только типы из `allowed_entity_types`.
+`deanonymize(...)` по умолчанию использует `mask`; `no_personal_data` оставляет токены. Для `restore` и `restore_allowed_only` нужен token scope из `sanitize_with_scope(...)`, поэтому восстанавливаются только токены этого входа и только в количестве исходных вхождений.
 
 ### `BaseVault`
 Абстрактный интерфейс хранилища токенов:
@@ -148,6 +152,9 @@ restored = sanitizer.deanonymize(answer)
 - `delete_value(value: str) -> bool`
 - `clear() -> None`
 - `purge_expired() -> int`
+
+### `FileVault(path, default_ttl_seconds=None, encryption_key=None)`
+Локальный JSON vault. Передайте ключ Fernet через `encryption_key`, чтобы шифровать маппинги на диске; без ключа JSON остаётся читаемым для обратной совместимости.
 
 ### `MemoryVault`
 In-memory реализация `BaseVault`.
