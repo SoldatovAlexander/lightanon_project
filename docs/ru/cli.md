@@ -25,9 +25,10 @@ lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy mas
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy restore_allowed_only --allowed-types EMAIL --scope-file <scope.json>
 lightanon rag inspect-vault <vault.json>
 lightanon rag delete-token <vault.json> <token>
-lightanon rag delete-value <vault.json> <value>
+lightanon rag delete-value <vault.json> <entity_type> <value> [--namespace default]
 lightanon rag purge-expired <vault.json>
 lightanon rag clear-vault <vault.json>
+lightanon rag migrate-vault <legacy.json> <vault.v2> --vault-key-env LIGHTANON_VAULT_KEY
 ```
 
 ## Параметры
@@ -44,7 +45,8 @@ lightanon rag clear-vault <vault.json>
 - `restore`: восстановить исходные значения по токенам,
 - `inspect-vault`: показать статистику vault без раскрытия исходных значений,
 - `delete-token`: удалить один маппинг по токену,
-- `delete-value`: удалить один маппинг по исходному значению,
+- `delete-value`: удалить один маппинг по типизированному исходному значению,
+- `migrate-vault`: перенести legacy plaintext vault в зашифрованный FileVault v2, сохранив исходный файл,
 - `purge-expired`: удалить истекшие маппинги,
 - `clear-vault`: удалить все маппинги,
 - `--vault`: JSON-файл с соответствиями токенов,

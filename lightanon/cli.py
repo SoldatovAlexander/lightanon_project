@@ -165,12 +165,17 @@ def _add_vault_key_option(parser) -> None:
 
 
 def _file_vault(path: str, args, default_ttl_seconds=None):
-    encryption_key = None
-    if args.vault_key_env:
-        encryption_key = os.environ.get(args.vault_key_env)
-        if encryption_key is None:
-            raise ValueError(f"Environment variable '{args.vault_key_env}' is not set")
+    encryption_key = _vault_key_from_args(args)
     return la.rag.FileVault(path, default_ttl_seconds=default_ttl_seconds, encryption_key=encryption_key)
+
+
+def _vault_key_from_args(args):
+    if not args.vault_key_env:
+        return None
+    encryption_key = os.environ.get(args.vault_key_env)
+    if encryption_key is None:
+        raise ValueError(f"Environment variable '{args.vault_key_env}' is not set")
+    return encryption_key
 
 
 def _run_rag_cli(argv):
@@ -246,9 +251,11 @@ def _run_rag_cli(argv):
     delete_token_parser.add_argument("token", help="Token to delete")
     _add_vault_key_option(delete_token_parser)
 
-    delete_value_parser = subparsers.add_parser("delete-value", help="Delete one vault mapping by original value")
+    delete_value_parser = subparsers.add_parser("delete-value", help="Delete one vault mapping by typed original value")
     delete_value_parser.add_argument("vault_file", help="Path to JSON token vault")
+    delete_value_parser.add_argument("entity_type", help="Entity type, for example EMAIL")
     delete_value_parser.add_argument("value", help="Original value to delete")
+    delete_value_parser.add_argument("--namespace", default="default", help="Vault namespace (default: default)")
     _add_vault_key_option(delete_value_parser)
 
     clear_vault_parser = subparsers.add_parser("clear-vault", help="Delete all vault mappings")
@@ -259,6 +266,11 @@ def _run_rag_cli(argv):
     purge_parser.add_argument("vault_file", help="Path to JSON token vault")
     _add_vault_key_option(purge_parser)
 
+    migrate_parser = subparsers.add_parser("migrate-vault", help="Migrate a legacy plaintext vault to encrypted v2")
+    migrate_parser.add_argument("source_file", help="Path to legacy plaintext vault")
+    migrate_parser.add_argument("destination_file", help="Path for the new encrypted v2 vault")
+    migrate_parser.add_argument("--vault-key-env", required=True, help="Environment variable containing the destination Fernet key")
+
     args = parser.parse_args(argv)
 
     if args.command in {"sanitize", "restore"}:
@@ -268,6 +280,17 @@ def _run_rag_cli(argv):
             vault=args.vault,
             scope_file=args.scope_file,
         )
+
+    if args.command == "migrate-vault":
+        _validate_distinct_paths(source_file=args.source_file, destination_file=args.destination_file)
+        migrated = la.rag.migrate_legacy_file_vault(
+            args.source_file,
+            args.destination_file,
+            _vault_key_from_args(args),
+        )
+        print(f"Migrated mappings: {migrated}")
+        print(f"Source retained: {args.source_file}")
+        return
 
     if args.command == "inspect-vault":
         vault = _file_vault(args.vault_file, args)
@@ -291,7 +314,7 @@ def _run_rag_cli(argv):
 
     if args.command == "delete-value":
         vault = _file_vault(args.vault_file, args)
-        deleted = vault.delete_value(args.value)
+        deleted = vault.delete_value(args.entity_type, args.value, args.namespace)
         print("Deleted: yes" if deleted else "Deleted: no")
         return
 

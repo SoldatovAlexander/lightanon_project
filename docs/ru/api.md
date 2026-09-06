@@ -146,15 +146,15 @@ restored = sanitizer.deanonymize(answer, policy="restore", token_scope=token_sco
 ### `BaseVault`
 Абстрактный интерфейс хранилища токенов:
 - `get_value(token: str)`
-- `get_token(value: str)`
-- `save(token: str, value: str, ttl_seconds: Optional[int] = None)`
+- `get_token(entity_type: str, value: str, namespace: str = "default")`
+- `save(token: str, entity_type: str, value: str, namespace: str = "default", ttl_seconds: Optional[int] = None)`
 - `delete_token(token: str) -> bool`
-- `delete_value(value: str) -> bool`
+- `delete_value(entity_type: str, value: str, namespace: str = "default") -> bool`
 - `clear() -> None`
 - `purge_expired() -> int`
 
 ### `FileVault(path, default_ttl_seconds=None, encryption_key=None)`
-Локальный JSON vault. Передайте ключ Fernet через `encryption_key`, чтобы шифровать маппинги на диске; без ключа JSON остаётся читаемым для обратной совместимости.
+Версионированный локальный vault. Значения разделены по типу сущности и namespace, а конфликтные маппинги вызывают `MappingConflict`. Ключ Fernet создаёт зашифрованный v2-envelope; при ключе plaintext и legacy vault отклоняются. Доступ к файлу защищён lock-файлом и атомарной заменой.
 
 ### `MemoryVault`
 In-memory реализация `BaseVault`.
@@ -165,7 +165,7 @@ JSON-backed реализация `BaseVault` для CLI и локальных RA
 Сохраняет токены на диск, поэтому `sanitize` и `restore` могут выполняться разными процессами.
 Запись выполняется через временный файл с последующей атомарной заменой.
 Некорректный JSON или неверная структура vault вызывают `ValueError`.
-Новые записи сохраняют `created_at`, `last_used_at` и, если задан TTL, `expires_at`; старый формат vault читается автоматически.
+Новые записи сохраняют `created_at`, `last_used_at` и, если задан TTL, `expires_at`. Legacy vault переносится явно через `migrate_legacy_file_vault(...)` или `lightanon rag migrate-vault`.
 
 Дополнительный метод:
 - `stats() -> Dict[str, object]`: возвращает путь, общее число маппингов, счетчики по типам токенов и наличие timestamps/expiration без исходных значений.

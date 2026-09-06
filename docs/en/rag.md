@@ -164,10 +164,10 @@ For production, implement your own `BaseVault` backend.
 
 Minimum `BaseVault` interface:
 - `get_value(token: str)`,
-- `get_token(value: str)`,
-- `save(token: str, value: str, ttl_seconds=None)`,
+- `get_token(entity_type: str, value: str, namespace="default")`,
+- `save(token: str, entity_type: str, value: str, namespace="default", ttl_seconds=None)`,
 - `delete_token(token: str)`,
-- `delete_value(value: str)`,
+- `delete_value(entity_type: str, value: str, namespace="default")`,
 - `clear()`,
 - `purge_expired()`.
 
@@ -181,9 +181,9 @@ from lightanon.rag import FileVault, TextSanitizer
 sanitizer = TextSanitizer(vault=FileVault("vault.json", encryption_key=os.environ["LIGHTANON_VAULT_KEY"]))
 ```
 
-`FileVault` validates JSON structure on read, treats legacy timezone-less timestamps as UTC, and writes changes through a `0600` temporary file followed by atomic replacement. Reads do not rewrite the vault. New entries include `created_at`, `last_used_at`, and `expires_at` when TTL is configured. `stats()` returns counters only, without original values.
+`FileVault` v2 validates JSON structure, stores a typed `(namespace, entity_type, value)` mapping, uses a lock file for every read-modify-write operation, and writes through a `0600` temporary file followed by atomic replacement. New entries include `created_at`, `last_used_at`, and `expires_at` when TTL is configured. `stats()` returns counters only, without original values.
 
-Pass a Fernet key as `encryption_key` to encrypt `FileVault` contents at rest. The unkeyed JSON mode is retained only for local compatibility; production vaults should use encryption, managed keys, and access control. The vault contains original personal data; delete mappings when they are no longer needed.
+Pass a Fernet key as `encryption_key` to create an encrypted v2 vault. Once a key is supplied, plaintext and legacy files are rejected, preventing a ciphertext replacement from silently downgrading protection. Migrate legacy plaintext files explicitly: `lightanon rag migrate-vault legacy.json vault.v2 --vault-key-env LIGHTANON_VAULT_KEY`. The source is retained. Production vaults should use encryption, managed keys, and access control.
 
 ## CLI
 
@@ -206,16 +206,17 @@ lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy 
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL --scope-file scope.json
 lightanon rag inspect-vault vault.json
 lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
-lightanon rag delete-value vault.json 'ivan@example.com'
+lightanon rag delete-value vault.json EMAIL 'ivan@example.com'
 lightanon rag purge-expired vault.json
 lightanon rag clear-vault vault.json
+lightanon rag migrate-vault legacy.json vault.v2 --vault-key-env LIGHTANON_VAULT_KEY
 ```
 
 `sanitize --scope-file` writes a non-sensitive token scope alongside the vault. `restore` defaults to `mask`; explicit `restore` and `restore_allowed_only` require `--scope-file` and cannot restore tokens outside that scope or beyond its occurrence counts.
 `--vault-key-env` reads a Fernet key from an environment variable and encrypts/decrypts the local vault without exposing the key in command history.
 `scan` prints a JSON report without writing to the vault and without revealing original values.
 `inspect-vault` prints saved mapping counts and token-type distribution without revealing stored values.
-`delete-token`, `delete-value`, and `clear-vault` manage saved mapping lifecycle.
+`delete-token`, `delete-value`, and `clear-vault` manage saved mapping lifecycle. `delete-value` requires an entity type because the same value may intentionally exist under several types.
 `--ttl-seconds` sets lifetime for new mappings, and `purge-expired` deletes expired entries.
 `--profile` enables a built-in rule profile. Available profiles: `basic`, `ru_152`, `ru_152_strict`.
 `--business-mode` adds organization-requisites protection on top of the selected profile. Available modes: `none`, `company`, `company_and_counterparties`.

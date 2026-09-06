@@ -164,7 +164,7 @@ Vault хранит соответствие токенов исходным зн
 ```bash
 lightanon rag inspect-vault vault.json
 lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
-lightanon rag delete-value vault.json 'ivan@example.com'
+lightanon rag delete-value vault.json EMAIL 'ivan@example.com'
 lightanon rag purge-expired vault.json
 lightanon rag clear-vault vault.json
 ```

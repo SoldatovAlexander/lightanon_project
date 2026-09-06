@@ -146,15 +146,15 @@ restored = sanitizer.deanonymize(answer, policy="restore", token_scope=token_sco
 ### `BaseVault`
 Abstract token-storage interface:
 - `get_value(token: str)`
-- `get_token(value: str)`
-- `save(token: str, value: str, ttl_seconds: Optional[int] = None)`
+- `get_token(entity_type: str, value: str, namespace: str = "default")`
+- `save(token: str, entity_type: str, value: str, namespace: str = "default", ttl_seconds: Optional[int] = None)`
 - `delete_token(token: str) -> bool`
-- `delete_value(value: str) -> bool`
+- `delete_value(entity_type: str, value: str, namespace: str = "default") -> bool`
 - `clear() -> None`
 - `purge_expired() -> int`
 
 ### `FileVault(path, default_ttl_seconds=None, encryption_key=None)`
-Local JSON vault. Pass a Fernet key through `encryption_key` to encrypt stored mappings at rest; without it, the JSON remains readable for backward compatibility.
+Versioned local vault. Values are scoped by entity type and namespace, and conflicting mappings raise `MappingConflict`. A Fernet key creates an encrypted v2 envelope; when a key is supplied, plaintext and legacy vaults are rejected. File access is protected by a lock file and atomic replacement.
 
 ### `MemoryVault`
 In-memory `BaseVault` implementation.
@@ -165,7 +165,7 @@ JSON-backed `BaseVault` implementation for CLI and local RAG workflows.
 Persists tokens to disk, so `sanitize` and `restore` can run in different processes.
 Writes use a temporary file followed by atomic replacement.
 Invalid JSON or invalid vault structure raises `ValueError`.
-New entries store `created_at`, `last_used_at`, and `expires_at` when TTL is configured; older vault format is read automatically.
+New entries store `created_at`, `last_used_at`, and `expires_at` when TTL is configured. Legacy vaults must be migrated explicitly with `migrate_legacy_file_vault(...)` or `lightanon rag migrate-vault`.
 
 Additional method:
 - `stats() -> Dict[str, object]`: returns path, total mappings, token-type counters, and timestamp/expiration availability without original values.

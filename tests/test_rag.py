@@ -5,7 +5,15 @@ import stat
 import pytest
 from cryptography.fernet import Fernet
 
-from lightanon.rag import BaseVault, FileVault, MemoryVault, Patterns, TextSanitizer
+from lightanon.rag import (
+    BaseVault,
+    FileVault,
+    MappingConflict,
+    MemoryVault,
+    Patterns,
+    TextSanitizer,
+    migrate_legacy_file_vault,
+)
 from lightanon.rag import sanitizer as sanitizer_module
 
 
@@ -122,7 +130,7 @@ def test_token_collision_is_regenerated(monkeypatch):
     vault = MemoryVault()
     collision = f"[EMAIL_{'a' * 32}]"
     replacement = f"[EMAIL_{'b' * 32}]"
-    vault.save(collision, "existing@example.com")
+    vault.save(collision, "EMAIL", "existing@example.com")
     generated_ids = iter(["a" * 32, "b" * 32])
     monkeypatch.setattr(sanitizer_module.secrets, "token_hex", lambda _: next(generated_ids))
 
@@ -393,7 +401,7 @@ def test_deanonymize_defaults_to_masking_tokens():
 def test_legacy_eight_hex_token_remains_restorable():
     sanitizer = TextSanitizer()
     token = "[EMAIL_aaaaaaaa]"
-    sanitizer.vault.save(token, "ivan@example.com")
+    sanitizer.vault.save(token, "EMAIL", "ivan@example.com")
 
     assert sanitizer.deanonymize(token, policy="restore", token_scope={token: 1}) == "ivan@example.com"
 
@@ -599,7 +607,7 @@ def test_scan_does_not_write_to_vault():
 
     sanitizer.scan("Email ivan@example.com")
 
-    assert vault.get_token("ivan@example.com") is None
+    assert vault.get_token("EMAIL", "ivan@example.com") is None
 
 
 def test_sanitize_with_report_includes_residual_scan():
@@ -619,53 +627,53 @@ def test_sanitize_with_report_includes_residual_scan():
 def test_file_vault_persists_mappings(tmp_path):
     vault_path = tmp_path / "vault.json"
     vault = FileVault(str(vault_path))
-    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
 
     restored_vault = FileVault(str(vault_path))
 
     assert restored_vault.get_value("[EMAIL_aaaaaaaa]") == "ivan@example.com"
-    assert restored_vault.get_token("ivan@example.com") == "[EMAIL_aaaaaaaa]"
+    assert restored_vault.get_token("EMAIL", "ivan@example.com") == "[EMAIL_aaaaaaaa]"
 
 
 def test_memory_vault_lifecycle_methods():
     vault = MemoryVault()
-    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
 
-    assert vault.delete_value("ivan@example.com") is True
+    assert vault.delete_value("EMAIL", "ivan@example.com") is True
     assert vault.get_value("[EMAIL_aaaaaaaa]") is None
-    assert vault.delete_value("ivan@example.com") is False
+    assert vault.delete_value("EMAIL", "ivan@example.com") is False
 
-    vault.save("[PHONE_bbbbbbbb]", "+7 900 123-45-67")
+    vault.save("[PHONE_bbbbbbbb]", "PHONE", "+7 900 123-45-67")
     assert vault.delete_token("[PHONE_bbbbbbbb]") is True
-    assert vault.get_token("+7 900 123-45-67") is None
+    assert vault.get_token("PHONE", "+7 900 123-45-67") is None
 
-    vault.save("[EMAIL_cccccccc]", "anna@example.com")
+    vault.save("[EMAIL_cccccccc]", "EMAIL", "anna@example.com")
     vault.clear()
-    assert vault.get_token("anna@example.com") is None
+    assert vault.get_token("EMAIL", "anna@example.com") is None
 
 
 def test_memory_vault_ttl_expiration():
     vault = MemoryVault(default_ttl_seconds=0)
-    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
 
     assert vault.get_value("[EMAIL_aaaaaaaa]") is None
-    assert vault.get_token("ivan@example.com") is None
+    assert vault.get_token("EMAIL", "ivan@example.com") is None
 
 
 def test_file_vault_lifecycle_methods_persist(tmp_path):
     vault_path = tmp_path / "vault.json"
     vault = FileVault(str(vault_path))
-    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
-    vault.save("[PHONE_bbbbbbbb]", "+7 900 123-45-67")
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
+    vault.save("[PHONE_bbbbbbbb]", "PHONE", "+7 900 123-45-67")
 
-    assert vault.delete_value("ivan@example.com") is True
+    assert vault.delete_value("EMAIL", "ivan@example.com") is True
     assert vault.delete_token("[PHONE_bbbbbbbb]") is True
 
     restored_vault = FileVault(str(vault_path))
-    assert restored_vault.get_token("ivan@example.com") is None
+    assert restored_vault.get_token("EMAIL", "ivan@example.com") is None
     assert restored_vault.get_value("[PHONE_bbbbbbbb]") is None
 
-    restored_vault.save("[EMAIL_cccccccc]", "anna@example.com")
+    restored_vault.save("[EMAIL_cccccccc]", "EMAIL", "anna@example.com")
     restored_vault.clear()
     assert FileVault(str(vault_path)).stats()["total"] == 0
 
@@ -673,18 +681,18 @@ def test_file_vault_lifecycle_methods_persist(tmp_path):
 def test_file_vault_ttl_expiration_and_purge(tmp_path):
     vault_path = tmp_path / "vault.json"
     vault = FileVault(str(vault_path), default_ttl_seconds=0)
-    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
 
     assert FileVault(str(vault_path)).purge_expired() == 1
     restored_vault = FileVault(str(vault_path))
     assert restored_vault.get_value("[EMAIL_aaaaaaaa]") is None
-    assert restored_vault.get_token("ivan@example.com") is None
+    assert restored_vault.get_token("EMAIL", "ivan@example.com") is None
 
 
 def test_file_vault_future_ttl_remains_active(tmp_path):
     vault_path = tmp_path / "vault.json"
     vault = FileVault(str(vault_path), default_ttl_seconds=3600)
-    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
 
     restored_vault = FileVault(str(vault_path))
 
@@ -693,7 +701,7 @@ def test_file_vault_future_ttl_remains_active(tmp_path):
     assert restored_vault.stats()["has_expiration"] is True
 
 
-def test_file_vault_accepts_legacy_naive_timestamps(tmp_path):
+def test_file_vault_rejects_legacy_format(tmp_path):
     vault_path = tmp_path / "vault.json"
     vault_path.write_text(
         json.dumps(
@@ -711,17 +719,18 @@ def test_file_vault_accepts_legacy_naive_timestamps(tmp_path):
         encoding="utf-8",
     )
 
-    assert FileVault(str(vault_path)).get_value("[EMAIL_aaaaaaaa]") == "ivan@example.com"
+    with pytest.raises(ValueError, match="migrate legacy vault"):
+        FileVault(str(vault_path))
 
 
 def test_file_vault_reads_do_not_rewrite_file_and_uses_private_permissions(tmp_path):
     vault_path = tmp_path / "vault.json"
     vault = FileVault(str(vault_path))
-    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
     before = vault_path.read_text(encoding="utf-8")
 
     assert vault.get_value("[EMAIL_aaaaaaaa]") == "ivan@example.com"
-    assert vault.get_token("ivan@example.com") == "[EMAIL_aaaaaaaa]"
+    assert vault.get_token("EMAIL", "ivan@example.com") == "[EMAIL_aaaaaaaa]"
     assert vault_path.read_text(encoding="utf-8") == before
     assert stat.S_IMODE(vault_path.stat().st_mode) & 0o077 == 0
 
@@ -729,10 +738,14 @@ def test_file_vault_reads_do_not_rewrite_file_and_uses_private_permissions(tmp_p
 def test_file_vault_writes_entries_with_timestamps(tmp_path):
     vault_path = tmp_path / "vault.json"
     vault = FileVault(str(vault_path))
-    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
 
     data = json.loads(vault_path.read_text(encoding="utf-8"))
 
+    assert data["format"] == "lightanon.file-vault"
+    assert data["version"] == 2
+    assert data["entries"]["[EMAIL_aaaaaaaa]"]["entity_type"] == "EMAIL"
+    assert data["entries"]["[EMAIL_aaaaaaaa]"]["namespace"] == "default"
     assert data["entries"]["[EMAIL_aaaaaaaa]"]["value"] == "ivan@example.com"
     assert data["entries"]["[EMAIL_aaaaaaaa]"]["created_at"]
     assert data["entries"]["[EMAIL_aaaaaaaa]"]["last_used_at"]
@@ -743,7 +756,7 @@ def test_file_vault_encrypts_values_with_fernet_key(tmp_path):
     vault_path = tmp_path / "vault.json"
     key = Fernet.generate_key()
     vault = FileVault(str(vault_path), encryption_key=key)
-    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
 
     assert "ivan@example.com" not in vault_path.read_text(encoding="utf-8")
     assert FileVault(str(vault_path), encryption_key=key).get_value("[EMAIL_aaaaaaaa]") == "ivan@example.com"
@@ -764,16 +777,15 @@ def test_file_vault_reuses_token_across_sanitizer_instances(tmp_path):
     assert first_token == second_token
 
 
-def test_file_vault_rebuilds_reverse_mapping(tmp_path):
+def test_file_vault_rejects_legacy_reverse_mapping(tmp_path):
     vault_path = tmp_path / "vault.json"
     vault_path.write_text(
         json.dumps({"token_to_value": {"[EMAIL_aaaaaaaa]": "ivan@example.com"}}),
         encoding="utf-8",
     )
 
-    vault = FileVault(str(vault_path))
-
-    assert vault.get_token("ivan@example.com") == "[EMAIL_aaaaaaaa]"
+    with pytest.raises(ValueError, match="migrate legacy vault"):
+        FileVault(str(vault_path))
 
 
 def test_file_vault_rejects_invalid_json(tmp_path):
@@ -787,11 +799,97 @@ def test_file_vault_rejects_invalid_json(tmp_path):
 def test_file_vault_stats_do_not_include_values(tmp_path):
     vault_path = tmp_path / "vault.json"
     vault = FileVault(str(vault_path))
-    vault.save("[EMAIL_aaaaaaaa]", "ivan@example.com")
-    vault.save("[CONTRACT_ID_bbbbbbbb]", "12-3456/78")
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
+    vault.save("[CONTRACT_ID_bbbbbbbb]", "CONTRACT_ID", "12-3456/78")
 
     stats = vault.stats()
 
     assert stats["total"] == 2
     assert stats["by_type"] == {"EMAIL": 1, "CONTRACT_ID": 1}
     assert "ivan@example.com" not in str(stats)
+
+
+def test_typed_values_do_not_share_tokens_between_entity_types():
+    vault = MemoryVault()
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "same-value")
+    vault.save("[PUBLIC_ID_bbbbbbbb]", "PUBLIC_ID", "same-value")
+
+    assert vault.get_token("EMAIL", "same-value") == "[EMAIL_aaaaaaaa]"
+    assert vault.get_token("PUBLIC_ID", "same-value") == "[PUBLIC_ID_bbbbbbbb]"
+
+
+def test_mapping_conflicts_do_not_mutate_file_vault(tmp_path):
+    vault_path = tmp_path / "vault.json"
+    vault = FileVault(str(vault_path))
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
+    before = vault_path.read_bytes()
+
+    with pytest.raises(MappingConflict, match="Token is already bound"):
+        vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "anna@example.com")
+    with pytest.raises(MappingConflict, match="Typed value is already bound"):
+        vault.save("[EMAIL_bbbbbbbb]", "EMAIL", "ivan@example.com")
+
+    assert vault_path.read_bytes() == before
+    assert vault.get_value("[EMAIL_aaaaaaaa]") == "ivan@example.com"
+    assert vault.get_value("[EMAIL_bbbbbbbb]") is None
+
+
+def test_file_vault_reloads_state_for_multiple_instances(tmp_path):
+    vault_path = tmp_path / "vault.json"
+    first = FileVault(str(vault_path))
+    second = FileVault(str(vault_path))
+
+    first.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
+    second.save("[PHONE_bbbbbbbb]", "PHONE", "+7 900 123-45-67")
+
+    assert first.get_value("[PHONE_bbbbbbbb]") == "+7 900 123-45-67"
+    assert second.get_value("[EMAIL_aaaaaaaa]") == "ivan@example.com"
+
+
+def test_file_vault_rejects_plaintext_substitution_when_key_is_supplied(tmp_path):
+    vault_path = tmp_path / "vault.json"
+    plain_path = tmp_path / "plain.json"
+    key = Fernet.generate_key()
+    FileVault(str(vault_path), encryption_key=key).save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
+    FileVault(str(plain_path)).save("[EMAIL_bbbbbbbb]", "EMAIL", "attacker@example.com")
+    vault_path.write_bytes(plain_path.read_bytes())
+
+    with pytest.raises(ValueError, match="requires an encrypted v2 vault"):
+        FileVault(str(vault_path), encryption_key=key)
+
+
+def test_file_vault_rejects_modified_encrypted_ciphertext(tmp_path):
+    vault_path = tmp_path / "vault.json"
+    key = Fernet.generate_key()
+    vault = FileVault(str(vault_path), encryption_key=key)
+    vault.save("[EMAIL_aaaaaaaa]", "EMAIL", "ivan@example.com")
+    envelope = json.loads(vault_path.read_text(encoding="utf-8"))
+    envelope["ciphertext"] = "not-a-fernet-token"
+    vault_path.write_text(json.dumps(envelope), encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Unable to decrypt"):
+        FileVault(str(vault_path), encryption_key=key)
+
+
+def test_migrate_legacy_file_vault_preserves_source_and_encrypts_destination(tmp_path):
+    source = tmp_path / "legacy.json"
+    destination = tmp_path / "vault.v2"
+    legacy = {"token_to_value": {"[EMAIL_aaaaaaaa]": "ivan@example.com"}}
+    source.write_text(json.dumps(legacy), encoding="utf-8")
+    key = Fernet.generate_key()
+
+    assert migrate_legacy_file_vault(str(source), str(destination), key) == 1
+    assert json.loads(source.read_text(encoding="utf-8")) == legacy
+    assert "ivan@example.com" not in destination.read_text(encoding="utf-8")
+    assert FileVault(str(destination), encryption_key=key).get_token("EMAIL", "ivan@example.com") == "[EMAIL_aaaaaaaa]"
+
+
+def test_migrate_legacy_file_vault_rejects_existing_destination(tmp_path):
+    source = tmp_path / "legacy.json"
+    destination = tmp_path / "vault.v2"
+    source.write_text(json.dumps({"token_to_value": {}}), encoding="utf-8")
+    destination.write_text("keep", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="destination already exists"):
+        migrate_legacy_file_vault(str(source), str(destination), Fernet.generate_key())
+    assert destination.read_text(encoding="utf-8") == "keep"

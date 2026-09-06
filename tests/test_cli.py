@@ -5,6 +5,7 @@ import pytest
 from cryptography.fernet import Fernet
 
 from lightanon import cli
+from lightanon.rag import FileVault
 
 
 def test_rag_cli_sanitize_and_restore(tmp_path):
@@ -317,17 +318,17 @@ def test_rag_cli_vault_lifecycle_commands(tmp_path, capsys):
     capsys.readouterr()
 
     data = json.loads(vault_path.read_text(encoding="utf-8"))
-    token = next(iter(data["token_to_value"]))
+    token = next(iter(data["entries"]))
 
     cli.main(["rag", "delete-token", str(vault_path), token])
     assert "Deleted: yes" in capsys.readouterr().out
-    assert json.loads(vault_path.read_text(encoding="utf-8"))["token_to_value"] == {}
+    assert json.loads(vault_path.read_text(encoding="utf-8"))["entries"] == {}
 
     cli.main(["rag", "sanitize", str(input_path), str(sanitized_path), "--vault", str(vault_path)])
     capsys.readouterr()
     cli.main(["rag", "clear-vault", str(vault_path)])
     assert "Vault cleared" in capsys.readouterr().out
-    assert json.loads(vault_path.read_text(encoding="utf-8"))["token_to_value"] == {}
+    assert json.loads(vault_path.read_text(encoding="utf-8"))["entries"] == {}
 
 
 def test_rag_cli_ttl_and_purge_expired(tmp_path, capsys):
@@ -353,7 +354,32 @@ def test_rag_cli_ttl_and_purge_expired(tmp_path, capsys):
     cli.main(["rag", "purge-expired", str(vault_path)])
 
     assert "Expired mappings deleted: 1" in capsys.readouterr().out
-    assert json.loads(vault_path.read_text(encoding="utf-8"))["token_to_value"] == {}
+    assert json.loads(vault_path.read_text(encoding="utf-8"))["entries"] == {}
+
+
+def test_rag_cli_migrates_legacy_vault_to_encrypted_v2(tmp_path, capsys, monkeypatch):
+    source_path = tmp_path / "legacy.json"
+    destination_path = tmp_path / "vault.v2"
+    key = Fernet.generate_key().decode("utf-8")
+    source_path.write_text(
+        json.dumps({"token_to_value": {"[EMAIL_aaaaaaaa]": "ivan@example.com"}}),
+        encoding="utf-8",
+    )
+    monkeypatch.setenv("LIGHTANON_VAULT_KEY", key)
+
+    cli.main(
+        [
+            "rag",
+            "migrate-vault",
+            str(source_path),
+            str(destination_path),
+            "--vault-key-env",
+            "LIGHTANON_VAULT_KEY",
+        ]
+    )
+
+    assert "Migrated mappings: 1" in capsys.readouterr().out
+    assert FileVault(str(destination_path), encryption_key=key).get_value("[EMAIL_aaaaaaaa]") == "ivan@example.com"
 
 
 def test_rag_cli_sanitize_with_selected_rules(tmp_path):

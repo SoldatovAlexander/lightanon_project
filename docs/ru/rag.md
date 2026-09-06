@@ -164,10 +164,10 @@ sanitizer.add_rule("CONTRACT", r"\b\d{2}-\d{4}/\d{2}\b")
 
 Минимальный интерфейс `BaseVault`:
 - `get_value(token: str)`,
-- `get_token(value: str)`,
-- `save(token: str, value: str, ttl_seconds=None)`,
+- `get_token(entity_type: str, value: str, namespace="default")`,
+- `save(token: str, entity_type: str, value: str, namespace="default", ttl_seconds=None)`,
 - `delete_token(token: str)`,
-- `delete_value(value: str)`,
+- `delete_value(entity_type: str, value: str, namespace="default")`,
 - `clear()`,
 - `purge_expired()`.
 
@@ -181,9 +181,9 @@ from lightanon.rag import FileVault, TextSanitizer
 sanitizer = TextSanitizer(vault=FileVault("vault.json", encryption_key=os.environ["LIGHTANON_VAULT_KEY"]))
 ```
 
-`FileVault` валидирует структуру JSON при чтении, интерпретирует legacy-timestamps без timezone как UTC и записывает изменения через временный файл с правами `0600` и атомарной заменой. Чтение не переписывает vault. Новые записи содержат `created_at`, `last_used_at` и, если задан TTL, `expires_at`. Метод `stats()` возвращает только счетчики, без исходных значений.
+`FileVault` v2 валидирует структуру JSON, хранит типизированное соответствие `(namespace, entity_type, value)`, использует lock-файл для каждой операции read-modify-write и записывает изменения через временный файл с правами `0600` и атомарной заменой. Новые записи содержат `created_at`, `last_used_at` и, если задан TTL, `expires_at`. Метод `stats()` возвращает только счетчики, без исходных значений.
 
-Передайте ключ Fernet через `encryption_key`, чтобы шифровать содержимое `FileVault` на диске. Режим JSON без ключа сохранён только для локальной совместимости; в production нужны шифрование, управляемые ключи и контроль доступа. Vault содержит исходные персональные данные; удаляйте маппинги, когда они больше не нужны.
+Передайте ключ Fernet через `encryption_key`, чтобы создать зашифрованный vault v2. При переданном ключе plaintext и legacy-файлы отклоняются, поэтому подмена ciphertext не сможет незаметно ослабить защиту. Legacy plaintext переносится явно: `lightanon rag migrate-vault legacy.json vault.v2 --vault-key-env LIGHTANON_VAULT_KEY`. Исходный файл сохраняется. В production нужны шифрование, управляемые ключи и контроль доступа.
 
 ## CLI
 
@@ -206,16 +206,17 @@ lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy 
 lightanon rag restore llm_response.txt restored.txt --vault vault.json --policy restore_allowed_only --allowed-types EMAIL --scope-file scope.json
 lightanon rag inspect-vault vault.json
 lightanon rag delete-token vault.json '[EMAIL_aaaaaaaa]'
-lightanon rag delete-value vault.json 'ivan@example.com'
+lightanon rag delete-value vault.json EMAIL 'ivan@example.com'
 lightanon rag purge-expired vault.json
 lightanon rag clear-vault vault.json
+lightanon rag migrate-vault legacy.json vault.v2 --vault-key-env LIGHTANON_VAULT_KEY
 ```
 
 `sanitize --scope-file` записывает рядом с vault безопасную область токенов. `restore` по умолчанию использует `mask`; для явного `restore` и `restore_allowed_only` необходим `--scope-file`, который не позволяет восстановить токены вне области или сверх количества исходных вхождений.
 `--vault-key-env` читает ключ Fernet из переменной окружения и шифрует/расшифровывает локальный vault без передачи ключа в истории команд.
 `scan` печатает JSON-отчет без записи в vault и без раскрытия исходных значений.
 `inspect-vault` показывает количество сохраненных маппингов и распределение по типам токенов, не раскрывая сохраненные значения.
-`delete-token`, `delete-value` и `clear-vault` управляют жизненным циклом сохраненных маппингов.
+`delete-token`, `delete-value` и `clear-vault` управляют жизненным циклом сохраненных маппингов. Для `delete-value` нужен тип сущности, потому что одно значение может намеренно существовать в нескольких типах.
 `--ttl-seconds` задает срок жизни новых маппингов, а `purge-expired` удаляет истекшие записи.
 `--profile` включает готовый профиль правил. Доступные профили: `basic`, `ru_152`, `ru_152_strict`.
 `--business-mode` добавляет защиту реквизитов организации поверх выбранного профиля. Доступные режимы: `none`, `company`, `company_and_counterparties`.

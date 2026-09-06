@@ -25,9 +25,10 @@ lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy mas
 lightanon rag restore <input.txt> <output.txt> --vault <vault.json> --policy restore_allowed_only --allowed-types EMAIL --scope-file <scope.json>
 lightanon rag inspect-vault <vault.json>
 lightanon rag delete-token <vault.json> <token>
-lightanon rag delete-value <vault.json> <value>
+lightanon rag delete-value <vault.json> <entity_type> <value> [--namespace default]
 lightanon rag purge-expired <vault.json>
 lightanon rag clear-vault <vault.json>
+lightanon rag migrate-vault <legacy.json> <vault.v2> --vault-key-env LIGHTANON_VAULT_KEY
 ```
 
 ## Parameters
@@ -44,7 +45,8 @@ lightanon rag clear-vault <vault.json>
 - `restore`: restore original values from tokens,
 - `inspect-vault`: print vault statistics without revealing original values,
 - `delete-token`: delete one mapping by token,
-- `delete-value`: delete one mapping by original value,
+- `delete-value`: delete one mapping by typed original value,
+- `migrate-vault`: convert a legacy plaintext vault to encrypted FileVault v2 while retaining the source,
 - `purge-expired`: delete expired mappings,
 - `clear-vault`: delete all mappings,
 - `--vault`: JSON token-mapping file,

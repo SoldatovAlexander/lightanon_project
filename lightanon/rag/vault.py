@@ -1,12 +1,24 @@
 import abc
 import json
 import os
+import re
 import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Dict, Optional, Union
+from typing import Dict, Optional, Tuple, Union
 
 from cryptography.fernet import Fernet, InvalidToken
+from filelock import FileLock
+
+
+VAULT_FORMAT = "lightanon.file-vault"
+VAULT_VERSION = 2
+DEFAULT_NAMESPACE = "default"
+ENTITY_TYPE_PATTERN = re.compile(r"^[A-Z][A-Z0-9_]*$")
+
+
+class MappingConflict(ValueError):
+    """A token or typed value is already bound to a different mapping."""
 
 
 def _parse_timestamp(value: str) -> datetime:
@@ -16,56 +28,54 @@ def _parse_timestamp(value: str) -> datetime:
     return parsed.astimezone(timezone.utc)
 
 
+def _validate_entity_type(entity_type: str) -> str:
+    if not isinstance(entity_type, str) or not ENTITY_TYPE_PATTERN.fullmatch(entity_type):
+        raise ValueError("entity_type must match ^[A-Z][A-Z0-9_]*$")
+    return entity_type
+
+
+def _validate_namespace(namespace: str) -> str:
+    if not isinstance(namespace, str) or not namespace:
+        raise ValueError("namespace must be a non-empty string")
+    return namespace
+
+
 class BaseVault(abc.ABC):
-    """
-    Abstract base class for Token Storage.
-    In production, implement this using Redis or a Database.
-    """
+    """Storage backend for reversible RAG tokens."""
+
     @abc.abstractmethod
     def get_value(self, token: str) -> Optional[str]:
-        """Retrieve real value by token."""
-        pass
+        """Retrieve a real value by token."""
 
     @abc.abstractmethod
-    def get_token(self, value: str) -> Optional[str]:
-        """Retrieve existing token by real value (to keep consistency)."""
-        pass
+    def get_token(self, entity_type: str, value: str, namespace: str = DEFAULT_NAMESPACE) -> Optional[str]:
+        """Retrieve an existing token by its typed value."""
 
     @abc.abstractmethod
-    def save(self, token: str, value: str, ttl_seconds: Optional[int] = None) -> None:
-        """Store a new mapping."""
-        pass
+    def save(self, token: str, entity_type: str, value: str, namespace: str = DEFAULT_NAMESPACE, ttl_seconds: Optional[int] = None) -> None:
+        """Store an immutable token-to-typed-value mapping."""
 
     @abc.abstractmethod
     def delete_token(self, token: str) -> bool:
-        """Delete mapping by token."""
-        pass
+        """Delete a mapping by token."""
 
     @abc.abstractmethod
-    def delete_value(self, value: str) -> bool:
-        """Delete mapping by real value."""
-        pass
+    def delete_value(self, entity_type: str, value: str, namespace: str = DEFAULT_NAMESPACE) -> bool:
+        """Delete a mapping by typed value."""
 
     @abc.abstractmethod
     def clear(self) -> None:
         """Delete all mappings."""
-        pass
 
     @abc.abstractmethod
     def purge_expired(self) -> int:
-        """Delete expired mappings and return deleted count."""
-        pass
+        """Delete expired mappings and return their count."""
 
-class MemoryVault(BaseVault):
-    """
-    Simple in-memory storage (Dict).
-    Fast, but non-persistent. Good for single-session RAG.
-    """
-    def __init__(self, default_ttl_seconds: Optional[int] = None):
-        self._token_to_val: Dict[str, str] = {}
-        self._val_to_token: Dict[str, str] = {}
-        self._token_metadata: Dict[str, Dict[str, str]] = {}
-        self.default_ttl_seconds = default_ttl_seconds
+
+class _VaultState:
+    """Shared typed mapping operations for in-memory and file-backed vaults."""
+
+    default_ttl_seconds: Optional[int]
 
     def _now(self) -> str:
         return datetime.now(timezone.utc).isoformat()
@@ -74,85 +84,109 @@ class MemoryVault(BaseVault):
         ttl = self.default_ttl_seconds if ttl_seconds is None else ttl_seconds
         if ttl is None:
             return None
-        timestamp = datetime.now(timezone.utc).timestamp() + ttl
-        return datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
+        return datetime.fromtimestamp(datetime.now(timezone.utc).timestamp() + ttl, timezone.utc).isoformat()
 
-    def _is_expired(self, token: str) -> bool:
-        expires_at = self._token_metadata.get(token, {}).get("expires_at")
-        if not expires_at:
-            return False
-        return _parse_timestamp(expires_at) <= datetime.now(timezone.utc)
+    def _is_expired(self, entry: Dict[str, str]) -> bool:
+        expires_at = entry.get("expires_at")
+        return bool(expires_at and _parse_timestamp(expires_at) <= datetime.now(timezone.utc))
+
+    @staticmethod
+    def _key(entity_type: str, value: str, namespace: str) -> Tuple[str, str, str]:
+        _validate_entity_type(entity_type)
+        _validate_namespace(namespace)
+        if not isinstance(value, str):
+            raise ValueError("value must be a string")
+        return namespace, entity_type, value
+
+    @staticmethod
+    def _reverse_index(entries: Dict[str, Dict[str, str]]) -> Dict[Tuple[str, str, str], str]:
+        index = {}
+        for token, entry in entries.items():
+            key = (entry["namespace"], entry["entity_type"], entry["value"])
+            previous = index.setdefault(key, token)
+            if previous != token:
+                raise MappingConflict("Vault contains duplicate typed values")
+        return index
+
+    def _purge_entries(self, entries: Dict[str, Dict[str, str]]) -> int:
+        expired = [token for token, entry in entries.items() if self._is_expired(entry)]
+        for token in expired:
+            del entries[token]
+        return len(expired)
+
+
+class MemoryVault(_VaultState, BaseVault):
+    """In-memory typed token storage for a single RAG session."""
+
+    def __init__(self, default_ttl_seconds: Optional[int] = None):
+        self.default_ttl_seconds = default_ttl_seconds
+        self._entries: Dict[str, Dict[str, str]] = {}
+
+    def _purge(self) -> int:
+        return self._purge_entries(self._entries)
 
     def get_value(self, token: str) -> Optional[str]:
-        if self._is_expired(token):
-            self.delete_token(token)
-            return None
-        return self._token_to_val.get(token)
+        self._purge()
+        entry = self._entries.get(token)
+        return entry["value"] if entry else None
 
-    def get_token(self, value: str) -> Optional[str]:
-        token = self._val_to_token.get(value)
-        if token and self._is_expired(token):
-            self.delete_token(token)
-            return None
-        return token
+    def get_token(self, entity_type: str, value: str, namespace: str = DEFAULT_NAMESPACE) -> Optional[str]:
+        self._purge()
+        return self._reverse_index(self._entries).get(self._key(entity_type, value, namespace))
 
-    def save(self, token: str, value: str, ttl_seconds: Optional[int] = None) -> None:
+    def save(self, token, entity_type, value, namespace=DEFAULT_NAMESPACE, ttl_seconds=None) -> None:
+        if not isinstance(token, str) or not token:
+            raise ValueError("token must be a non-empty string")
+        self._purge()
+        key = self._key(entity_type, value, namespace)
+        existing = self._entries.get(token)
+        if existing and self._key(existing["entity_type"], existing["value"], existing["namespace"]) != key:
+            raise MappingConflict("Token is already bound to another value")
+        previous_token = self._reverse_index(self._entries).get(key)
+        if previous_token and previous_token != token:
+            raise MappingConflict("Typed value is already bound to another token")
         now = self._now()
-        self._token_to_val[token] = value
-        self._val_to_token[value] = token
-        metadata = self._token_metadata.setdefault(token, {"created_at": now})
-        metadata["last_used_at"] = now
+        if not existing:
+            existing = {"entity_type": entity_type, "namespace": namespace, "value": value, "created_at": now}
+            self._entries[token] = existing
+        existing["last_used_at"] = now
         expires_at = self._expires_at(ttl_seconds)
         if expires_at is not None:
-            metadata["expires_at"] = expires_at
+            existing["expires_at"] = expires_at
 
     def delete_token(self, token: str) -> bool:
-        value = self._token_to_val.pop(token, None)
-        if value is None:
-            return False
-        self._val_to_token.pop(value, None)
-        self._token_metadata.pop(token, None)
-        return True
+        self._purge()
+        return self._entries.pop(token, None) is not None
 
-    def delete_value(self, value: str) -> bool:
-        token = self._val_to_token.pop(value, None)
+    def delete_value(self, entity_type: str, value: str, namespace: str = DEFAULT_NAMESPACE) -> bool:
+        self._purge()
+        token = self._reverse_index(self._entries).get(self._key(entity_type, value, namespace))
         if token is None:
             return False
-        self._token_to_val.pop(token, None)
-        self._token_metadata.pop(token, None)
+        del self._entries[token]
         return True
 
     def clear(self) -> None:
-        self._token_to_val.clear()
-        self._val_to_token.clear()
-        self._token_metadata.clear()
+        self._entries.clear()
 
     def purge_expired(self) -> int:
-        expired_tokens = [token for token in self._token_to_val if self._is_expired(token)]
-        for token in expired_tokens:
-            self.delete_token(token)
-        return len(expired_tokens)
+        return self._purge()
 
 
-class FileVault(BaseVault):
-    """
-    JSON-backed token storage for CLI and small local RAG workflows.
-    """
-    def __init__(
-        self,
-        path: str,
-        default_ttl_seconds: Optional[int] = None,
-        encryption_key: Optional[Union[str, bytes]] = None,
-    ):
+class FileVault(_VaultState, BaseVault):
+    """Versioned, lock-protected local storage for reversible RAG tokens."""
+
+    def __init__(self, path: str, default_ttl_seconds: Optional[int] = None, encryption_key: Optional[Union[str, bytes]] = None):
         self.path = Path(path)
-        self._token_to_val: Dict[str, str] = {}
-        self._val_to_token: Dict[str, str] = {}
-        self._token_metadata: Dict[str, Dict[str, str]] = {}
         self.default_ttl_seconds = default_ttl_seconds
         self._fernet = self._build_fernet(encryption_key)
-        self._load()
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        self._lock = FileLock(f"{self.path}.lock")
+        with self._lock:
+            self._read_entries()
 
-    def _build_fernet(self, encryption_key: Optional[Union[str, bytes]]) -> Optional[Fernet]:
+    @staticmethod
+    def _build_fernet(encryption_key: Optional[Union[str, bytes]]) -> Optional[Fernet]:
         if encryption_key is None:
             return None
         key = encryption_key.encode("utf-8") if isinstance(encryption_key, str) else encryption_key
@@ -163,209 +197,240 @@ class FileVault(BaseVault):
         except (TypeError, ValueError) as exc:
             raise ValueError("encryption_key must be a valid Fernet key") from exc
 
-    def _now(self) -> str:
-        return datetime.now(timezone.utc).isoformat()
-
-    def _expires_at(self, ttl_seconds: Optional[int]) -> Optional[str]:
-        ttl = self.default_ttl_seconds if ttl_seconds is None else ttl_seconds
-        if ttl is None:
-            return None
-        timestamp = datetime.now(timezone.utc).timestamp() + ttl
-        return datetime.fromtimestamp(timestamp, timezone.utc).isoformat()
-
-    def _is_expired(self, token: str) -> bool:
-        expires_at = self._token_metadata.get(token, {}).get("expires_at")
-        if not expires_at:
-            return False
-        return _parse_timestamp(expires_at) <= datetime.now(timezone.utc)
-
-    def _load(self) -> None:
-        if not self.path.exists() or self.path.stat().st_size == 0:
-            return
-
-        raw_data = self.path.read_bytes()
-        if self._fernet is not None and raw_data.startswith(b"gAAAA"):
-            try:
-                raw_data = self._fernet.decrypt(raw_data)
-            except InvalidToken as exc:
-                raise ValueError("Unable to decrypt vault with the supplied encryption key") from exc
-        elif raw_data.startswith(b"gAAAA"):
-            raise ValueError("Vault is encrypted; provide an encryption key")
-
+    @staticmethod
+    def _parse_json(raw_data: bytes, error: str) -> dict:
         try:
             data = json.loads(raw_data.decode("utf-8"))
         except (UnicodeDecodeError, json.JSONDecodeError) as exc:
-            raise ValueError(f"Invalid vault JSON: {self.path}") from exc
-
+            raise ValueError(error) from exc
         if not isinstance(data, dict):
-            raise ValueError("Vault JSON must be an object")
+            raise ValueError(error)
+        return data
 
-        entries = data.get("entries")
-        if entries is not None:
-            self._load_entries(entries)
-            return
-
-        token_to_value = data.get("token_to_value", {})
-        value_to_token = data.get("value_to_token")
-        if not isinstance(token_to_value, dict):
-            raise ValueError("Vault field 'token_to_value' must be an object")
-        if value_to_token is not None and not isinstance(value_to_token, dict):
-            raise ValueError("Vault field 'value_to_token' must be an object")
-
-        self._token_to_val = self._validate_mapping(token_to_value, "token_to_value")
-        if value_to_token is None:
-            self._val_to_token = {value: token for token, value in self._token_to_val.items()}
+    def _read_entries(self) -> Dict[str, Dict[str, str]]:
+        if not self.path.exists() or self.path.stat().st_size == 0:
+            return {}
+        outer = self._parse_json(self.path.read_bytes(), f"Invalid vault JSON: {self.path}")
+        if self._fernet is not None:
+            if outer.get("format") != VAULT_FORMAT or outer.get("version") != VAULT_VERSION or outer.get("encrypted") is not True:
+                raise ValueError("Encrypted FileVault requires an encrypted v2 vault")
+            ciphertext = outer.get("ciphertext")
+            if not isinstance(ciphertext, str):
+                raise ValueError("Encrypted FileVault ciphertext must be a string")
+            try:
+                payload = self._fernet.decrypt(ciphertext.encode("utf-8"))
+            except InvalidToken as exc:
+                raise ValueError("Unable to decrypt vault with the supplied encryption key") from exc
+            data = self._parse_json(payload, "Invalid encrypted vault payload")
         else:
-            self._val_to_token = self._validate_mapping(value_to_token, "value_to_token")
-        now = self._now()
-        self._token_metadata = {
-            token: {"created_at": now, "last_used_at": now}
-            for token in self._token_to_val
-        }
-
-    def _load_entries(self, entries: Dict[str, object]) -> None:
+            if outer.get("encrypted") is True:
+                raise ValueError("Vault is encrypted; provide an encryption key")
+            data = outer
+        if data.get("format") != VAULT_FORMAT or data.get("version") != VAULT_VERSION:
+            raise ValueError("Unsupported vault format; migrate legacy vault before use")
+        entries = data.get("entries")
         if not isinstance(entries, dict):
             raise ValueError("Vault field 'entries' must be an object")
-
+        validated = {}
         for token, entry in entries.items():
-            if not isinstance(token, str) or not isinstance(entry, dict):
-                raise ValueError("Vault field 'entries' must map string tokens to objects")
+            if not isinstance(token, str) or not token or not isinstance(entry, dict):
+                raise ValueError("Vault entries must map non-empty tokens to objects")
+            entity_type = entry.get("entity_type")
+            namespace = entry.get("namespace")
             value = entry.get("value")
-            created_at = entry.get("created_at")
-            last_used_at = entry.get("last_used_at")
+            self._key(entity_type, value, namespace)
+            normalized = {"entity_type": entity_type, "namespace": namespace, "value": value}
+            for timestamp in ("created_at", "last_used_at"):
+                if not isinstance(entry.get(timestamp), str):
+                    raise ValueError(f"Vault entry {timestamp} must be a string")
+                _parse_timestamp(entry[timestamp])
+                normalized[timestamp] = entry[timestamp]
             expires_at = entry.get("expires_at")
-            if not isinstance(value, str):
-                raise ValueError("Vault entry value must be a string")
-            if created_at is not None and not isinstance(created_at, str):
-                raise ValueError("Vault entry created_at must be a string")
-            if last_used_at is not None and not isinstance(last_used_at, str):
-                raise ValueError("Vault entry last_used_at must be a string")
-            if expires_at is not None and not isinstance(expires_at, str):
-                raise ValueError("Vault entry expires_at must be a string")
+            if expires_at is not None:
+                if not isinstance(expires_at, str):
+                    raise ValueError("Vault entry expires_at must be a string or null")
+                _parse_timestamp(expires_at)
+                normalized["expires_at"] = expires_at
+            validated[token] = normalized
+        self._reverse_index(validated)
+        return validated
 
-            now = self._now()
-            self._token_to_val[token] = value
-            self._val_to_token[value] = token
-            self._token_metadata[token] = {
-                "created_at": created_at or now,
-                "last_used_at": last_used_at or created_at or now,
-            }
-            if expires_at:
-                self._token_metadata[token]["expires_at"] = expires_at
-
-    def _validate_mapping(self, mapping: Dict[str, str], field_name: str) -> Dict[str, str]:
-        for key, value in mapping.items():
-            if not isinstance(key, str) or not isinstance(value, str):
-                raise ValueError(f"Vault field '{field_name}' must contain only string keys and values")
-        return dict(mapping)
-
-    def _flush(self) -> None:
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        entries = {
-            token: {
-                "value": value,
-                **self._token_metadata.get(token, {}),
-            }
-            for token, value in self._token_to_val.items()
-        }
-        data = {
-            "token_to_value": self._token_to_val,
-            "value_to_token": self._val_to_token,
-            "entries": entries,
-        }
+    def _write_entries(self, entries: Dict[str, Dict[str, str]]) -> None:
+        payload = {"format": VAULT_FORMAT, "version": VAULT_VERSION, "entries": entries}
+        payload_bytes = json.dumps(payload, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
+        if self._fernet is not None:
+            envelope = {"format": VAULT_FORMAT, "version": VAULT_VERSION, "encrypted": True, "ciphertext": self._fernet.encrypt(payload_bytes).decode("utf-8")}
+            payload_bytes = json.dumps(envelope, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
         tmp_name = None
         try:
-            payload = json.dumps(data, ensure_ascii=False, indent=2).encode("utf-8") + b"\n"
-            if self._fernet is not None:
-                payload = self._fernet.encrypt(payload)
-            with tempfile.NamedTemporaryFile(
-                "wb",
-                delete=False,
-                dir=self.path.parent,
-                prefix=f".{self.path.name}.",
-                suffix=".tmp",
-            ) as f:
-                tmp_name = f.name
+            with tempfile.NamedTemporaryFile("wb", delete=False, dir=self.path.parent, prefix=f".{self.path.name}.", suffix=".tmp") as temp_file:
+                tmp_name = temp_file.name
                 os.chmod(tmp_name, 0o600)
-                f.write(payload)
+                temp_file.write(payload_bytes)
             os.replace(tmp_name, self.path)
         finally:
             if tmp_name and os.path.exists(tmp_name):
                 os.unlink(tmp_name)
 
+    def _read_and_purge(self) -> Tuple[Dict[str, Dict[str, str]], int]:
+        entries = self._read_entries()
+        return entries, self._purge_entries(entries)
+
     def get_value(self, token: str) -> Optional[str]:
-        if self._is_expired(token):
-            self.delete_token(token)
-            return None
-        value = self._token_to_val.get(token)
-        return value
+        with self._lock:
+            entries, purged = self._read_and_purge()
+            if purged:
+                self._write_entries(entries)
+            entry = entries.get(token)
+            return entry["value"] if entry else None
 
-    def get_token(self, value: str) -> Optional[str]:
-        token = self._val_to_token.get(value)
-        if token is not None and self._is_expired(token):
-            self.delete_token(token)
-            return None
-        return token
+    def get_token(self, entity_type: str, value: str, namespace: str = DEFAULT_NAMESPACE) -> Optional[str]:
+        with self._lock:
+            entries, purged = self._read_and_purge()
+            if purged:
+                self._write_entries(entries)
+            return self._reverse_index(entries).get(self._key(entity_type, value, namespace))
 
-    def save(self, token: str, value: str, ttl_seconds: Optional[int] = None) -> None:
-        now = self._now()
-        self._token_to_val[token] = value
-        self._val_to_token[value] = token
-        self._token_metadata.setdefault(token, {"created_at": now})
-        self._token_metadata[token]["last_used_at"] = now
-        expires_at = self._expires_at(ttl_seconds)
-        if expires_at is not None:
-            self._token_metadata[token]["expires_at"] = expires_at
-        self._flush()
+    def save(self, token, entity_type, value, namespace=DEFAULT_NAMESPACE, ttl_seconds=None) -> None:
+        if not isinstance(token, str) or not token:
+            raise ValueError("token must be a non-empty string")
+        with self._lock:
+            entries, _ = self._read_and_purge()
+            key = self._key(entity_type, value, namespace)
+            existing = entries.get(token)
+            if existing and self._key(existing["entity_type"], existing["value"], existing["namespace"]) != key:
+                raise MappingConflict("Token is already bound to another value")
+            previous_token = self._reverse_index(entries).get(key)
+            if previous_token and previous_token != token:
+                raise MappingConflict("Typed value is already bound to another token")
+            now = self._now()
+            if not existing:
+                existing = {"entity_type": entity_type, "namespace": namespace, "value": value, "created_at": now}
+                entries[token] = existing
+            existing["last_used_at"] = now
+            expires_at = self._expires_at(ttl_seconds)
+            if expires_at is not None:
+                existing["expires_at"] = expires_at
+            self._write_entries(entries)
 
     def delete_token(self, token: str) -> bool:
-        value = self._token_to_val.pop(token, None)
-        if value is None:
-            return False
-        self._val_to_token.pop(value, None)
-        self._token_metadata.pop(token, None)
-        self._flush()
-        return True
+        with self._lock:
+            entries, purged = self._read_and_purge()
+            deleted = entries.pop(token, None) is not None
+            if deleted or purged:
+                self._write_entries(entries)
+            return deleted
 
-    def delete_value(self, value: str) -> bool:
-        token = self._val_to_token.pop(value, None)
-        if token is None:
-            return False
-        self._token_to_val.pop(token, None)
-        self._token_metadata.pop(token, None)
-        self._flush()
-        return True
+    def delete_value(self, entity_type: str, value: str, namespace: str = DEFAULT_NAMESPACE) -> bool:
+        with self._lock:
+            entries, purged = self._read_and_purge()
+            token = self._reverse_index(entries).get(self._key(entity_type, value, namespace))
+            if token is None:
+                if purged:
+                    self._write_entries(entries)
+                return False
+            del entries[token]
+            self._write_entries(entries)
+            return True
 
     def clear(self) -> None:
-        self._token_to_val.clear()
-        self._val_to_token.clear()
-        self._token_metadata.clear()
-        self._flush()
+        with self._lock:
+            self._write_entries({})
 
     def purge_expired(self) -> int:
-        expired_tokens = [token for token in self._token_to_val if self._is_expired(token)]
-        for token in expired_tokens:
-            value = self._token_to_val.pop(token, None)
-            if value is not None:
-                self._val_to_token.pop(value, None)
-            self._token_metadata.pop(token, None)
-        if expired_tokens:
-            self._flush()
-        return len(expired_tokens)
+        with self._lock:
+            entries, purged = self._read_and_purge()
+            if purged:
+                self._write_entries(entries)
+            return purged
 
     def stats(self) -> Dict[str, object]:
-        self.purge_expired()
-        by_type: Dict[str, int] = {}
-        for token in self._token_to_val:
-            if token.startswith("[") and token.endswith("]") and "_" in token:
-                entity_type = token[1:-1].rsplit("_", 1)[0]
-            else:
-                entity_type = "UNKNOWN"
-            by_type[entity_type] = by_type.get(entity_type, 0) + 1
-        return {
-            "path": str(self.path),
-            "total": len(self._token_to_val),
-            "by_type": by_type,
-            "has_timestamps": bool(self._token_metadata),
-            "has_expiration": any("expires_at" in metadata for metadata in self._token_metadata.values()),
-        }
+        with self._lock:
+            entries, purged = self._read_and_purge()
+            if purged:
+                self._write_entries(entries)
+            by_type: Dict[str, int] = {}
+            for entry in entries.values():
+                entity_type = entry["entity_type"]
+                by_type[entity_type] = by_type.get(entity_type, 0) + 1
+            return {"path": str(self.path), "total": len(entries), "by_type": by_type, "has_timestamps": bool(entries), "has_expiration": any("expires_at" in entry for entry in entries.values())}
+
+
+def migrate_legacy_file_vault(source_path: str, destination_path: str, encryption_key: Union[str, bytes]) -> int:
+    """Convert a legacy plaintext FileVault into an encrypted v2 vault without touching the source."""
+    source = Path(source_path)
+    destination = Path(destination_path)
+    if source.resolve(strict=False) == destination.resolve(strict=False):
+        raise ValueError("source and destination vault paths must be different")
+    if not source.exists():
+        raise ValueError(f"Legacy vault does not exist: {source}")
+    if destination.exists():
+        raise ValueError(f"Migration destination already exists: {destination}")
+
+    try:
+        legacy = json.loads(source.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        raise ValueError(f"Invalid legacy vault JSON: {source}") from exc
+    if not isinstance(legacy, dict) or legacy.get("encrypted") is True:
+        raise ValueError("Migration source must be a plaintext legacy vault")
+
+    legacy_entries = legacy.get("entries")
+    token_to_value = legacy.get("token_to_value", {})
+    if legacy_entries is not None and not isinstance(legacy_entries, dict):
+        raise ValueError("Legacy vault entries must be an object")
+    if not isinstance(token_to_value, dict):
+        raise ValueError("Legacy vault token_to_value must be an object")
+
+    records = {}
+    for token, value in token_to_value.items():
+        records[token] = {"value": value}
+    for token, entry in (legacy_entries or {}).items():
+        if not isinstance(entry, dict):
+            raise ValueError("Legacy vault entries must map tokens to objects")
+        records[token] = entry
+
+    token_pattern = re.compile(r"^\[([A-Z][A-Z0-9_]*)_[a-f0-9]{8}(?:[a-f0-9]{24})?\]$")
+    now = datetime.now(timezone.utc).isoformat()
+    converted = {}
+    for token, record in records.items():
+        match = token_pattern.fullmatch(token) if isinstance(token, str) else None
+        value = record.get("value") if isinstance(record, dict) else None
+        if not match or not isinstance(value, str):
+            raise ValueError("Legacy vault contains an invalid token or value")
+        created_at = record.get("created_at", now)
+        last_used_at = record.get("last_used_at", created_at)
+        expires_at = record.get("expires_at")
+        if not isinstance(created_at, str) or not isinstance(last_used_at, str) or (expires_at is not None and not isinstance(expires_at, str)):
+            raise ValueError("Legacy vault contains invalid timestamps")
+        _parse_timestamp(created_at)
+        _parse_timestamp(last_used_at)
+        if expires_at is not None:
+            _parse_timestamp(expires_at)
+        converted[token] = {"entity_type": match.group(1), "namespace": DEFAULT_NAMESPACE, "value": value, "created_at": created_at, "last_used_at": last_used_at}
+        if expires_at is not None:
+            converted[token]["expires_at"] = expires_at
+
+    FileVault._reverse_index(converted)
+    destination.parent.mkdir(parents=True, exist_ok=True)
+    destination_lock = FileLock(f"{destination}.lock")
+    temporary_path = None
+    temporary_lock_path = None
+    try:
+        with destination_lock:
+            fd, temporary_path = tempfile.mkstemp(dir=destination.parent, prefix=f".{destination.name}.migration-", suffix=".tmp")
+            os.close(fd)
+            temporary_lock_path = f"{temporary_path}.lock"
+            temporary_vault = FileVault(temporary_path, encryption_key=encryption_key)
+            temporary_vault._write_entries(converted)
+            os.replace(temporary_path, destination)
+            temporary_path = None
+        verified = FileVault(str(destination), encryption_key=encryption_key)
+        for token, entry in converted.items():
+            if verified.get_value(token) != entry["value"]:
+                raise ValueError("Migrated vault verification failed")
+    finally:
+        if temporary_path and os.path.exists(temporary_path):
+            os.unlink(temporary_path)
+        if temporary_lock_path and os.path.exists(temporary_lock_path):
+            os.unlink(temporary_lock_path)
+    return len(converted)

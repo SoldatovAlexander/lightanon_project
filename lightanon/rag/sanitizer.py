@@ -169,8 +169,8 @@ class TextSanitizer:
 
     def _normalize_entity_type(self, name: str) -> str:
         entity_type = re.sub(r"[^A-Z0-9_]", "_", name.upper()).strip("_")
-        if not entity_type:
-            raise ValueError("Rule name must contain at least one alphanumeric character")
+        if not re.fullmatch(r"[A-Z][A-Z0-9_]*", entity_type):
+            raise ValueError("Rule name must start with a letter and contain only alphanumeric characters or underscores")
         return entity_type
 
     def _make_token(self, entity_type: str) -> str:
@@ -178,14 +178,14 @@ class TextSanitizer:
         return f"[{entity_type}_{uid}]"
 
     def _get_or_create_token(self, entity_type: str, real_value: str) -> str:
-        existing_token = self.vault.get_token(real_value)
+        existing_token = self.vault.get_token(entity_type, real_value)
         if existing_token:
             return existing_token
 
         token = self._make_token(entity_type)
         while self.vault.get_value(token) is not None:
             token = self._make_token(entity_type)
-        self.vault.save(token, real_value)
+        self.vault.save(token, entity_type, real_value)
         return token
 
     def sanitize(self, text: str) -> str:
