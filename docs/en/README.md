@@ -10,6 +10,8 @@ This is the main documentation entry point for English-speaking users.
 - [RAG Guide](./rag.md)
 - [RAG Compliance Notes](./rag-compliance.md)
 - [Troubleshooting](./troubleshooting.md)
+- [Capability Boundaries](./capabilities.md)
+- [Migration to 0.3.0](./migration-0.3.md)
 - [Changelog](../../CHANGELOG.md)
 
 ## Scope

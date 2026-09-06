@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+    branches: [testdev]
+  pull_request:
+    branches: [testdev]
+
+jobs:
+  test-and-package:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.9", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install -r requirements.txt pytest build
+      - run: python -m pytest -q
+      - run: python demo.py
+      - run: python financial-demo.py
+      - run: python stream-demo.py
+      - run: python rag-demo.py
+      - run: python -m build
+      - run: python -m venv /tmp/lightanon-wheel
+      - run: /tmp/lightanon-wheel/bin/python -m pip install --upgrade pip
+      - run: /tmp/lightanon-wheel/bin/python -m pip install dist/*.whl
+      - run: /tmp/lightanon-wheel/bin/lightanon --help
+      - run: /tmp/lightanon-wheel/bin/lightanon rag --help

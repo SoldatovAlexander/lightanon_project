@@ -90,5 +90,8 @@ pytest -q
 - Streaming guide: `docs/en/streaming.md`
 - RAG guide: `docs/en/rag.md`
 - RAG compliance notes: `docs/en/rag-compliance.md`
+- Capability boundaries: `docs/en/capabilities.md`
+- Migration to 0.3.0: `docs/en/migration-0.3.md`
 - Troubleshooting: `docs/en/troubleshooting.md`
 - Russian docs index: `docs/ru/README.md`
+- Russian migration guide: `docs/ru/migration-0.3.md`

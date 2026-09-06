@@ -1,21 +1,32 @@
 # Changelog
 
-## Unreleased
+## 0.3.0
 
 ### Added
 - RAG `business_mode` for optional company and counterparty requisites protection before cloud LLM calls.
 - Built-in RAG business rules for organization names, INN/KPP/OGRN/OKPO, legal addresses, bank accounts, BIK, and compact counterparty requisites blocks.
 - CLI `--business-mode` option for `lightanon rag sanitize` and `lightanon rag scan`.
+- `OrganizationProfile` and explicit `report`, `mask`, and `reject` policies for unknown organizations in application RAG integrations.
+- `sanitize_metadata_with_scope()` and `sanitize_document_with_scope()` with a bounded combined restoration scope.
+- FileVault v2 with typed mappings, immutable conflict checks, lock-protected file access, encrypted envelopes, and `lightanon rag migrate-vault`.
+- Release CI: tests, demos, source/wheel build, wheel installation, and CLI smoke checks.
 
 ### Security
 - Table anonymization now fails closed: rule errors replace the affected output column instead of leaving raw source values.
 - Batch CLI exits with code `1` when any schema column fails or is missing.
 - RAG restoration now masks tokens by default and requires a bounded token scope for explicit value disclosure.
 - Newly generated RAG tokens now use 128 bits of cryptographic randomness and are checked for vault collisions.
-- RAG vault handles legacy timezone-less timestamps as UTC, avoids writes on reads, uses private local-file permissions, and supports Fernet encryption through API and CLI environment keys.
+- RAG scan/report output now marks regex coverage as heuristic rather than assigning a safety risk level.
 - `Hash` now requires a non-empty secret salt and uses HMAC-SHA-256; `Mask` no longer exposes short values.
 - Financial multiplicative noise preserves the original transaction sign.
 - Processing reports no longer present technical rule execution as a legal compliance determination.
+
+### Changed
+- `BaseVault` lookup, save, and delete-by-value calls require `entity_type` and optionally `namespace`.
+- FileVault no longer reads legacy files automatically. Migrate plaintext legacy vaults explicitly to encrypted v2.
+- `deanonymize()` masks by default; restoration requires an explicit scope created during sanitization.
+- `Hash` requires a secret salt and uses HMAC-SHA-256 instead of the former SHA-256 behavior.
+- `Mask` does not reveal short values.
 
 ## 0.2.0
 
@@ -30,7 +41,6 @@
 
 ### Changed
 - RAG sanitization now supports span-based replacement to avoid overlapping-rule corruption.
-- `FileVault` keeps backward compatibility with the previous JSON shape while adding structured `entries`.
 
 ### Verified
 - Test suite passes: `67 passed`.

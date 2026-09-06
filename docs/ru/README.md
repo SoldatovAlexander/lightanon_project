@@ -10,6 +10,8 @@
 - [Руководство по RAG](./rag.md)
 - [RAG и 152-ФЗ](./rag-compliance.md)
 - [Решение проблем](./troubleshooting.md)
+- [Границы возможностей](./capabilities.md)
+- [Переход на 0.3.0](./migration-0.3.md)
 - [Changelog](../../CHANGELOG.md)
 
 ## Покрытие

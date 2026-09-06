@@ -9,7 +9,7 @@ def test_rag_flow():
     print(f"ORIGINAL: {original}")
 
     # 2. Обезличивание (Sanitize)
-    clean = rag.sanitize(original)
+    clean, token_scope = rag.sanitize_with_scope(original)
     print(f"SANITIZED (To LLM): {clean}")
 
     # Проверка: ПДн не должны остаться
@@ -24,7 +24,7 @@ def test_rag_flow():
     print(f"LLM RESPONSE: {llm_response}")
 
     # 4. Восстановление (Deanonymize)
-    final = rag.deanonymize(llm_response)
+    final = rag.deanonymize(llm_response, policy="restore", token_scope=token_scope)
     print(f"FINAL (To User): {final}")
 
     # Проверка: данные вернулись
