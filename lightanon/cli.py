@@ -380,7 +380,7 @@ def main(argv=None):
 
     print("Done!")
     print(engine.generate_report())
-    if any(entry["status"] != "Success" for entry in engine.audit_log):
+    if any(entry["status"] != "success" for entry in engine.audit_log):
         raise SystemExit(1)
 
 

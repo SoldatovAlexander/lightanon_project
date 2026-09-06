@@ -125,7 +125,7 @@ def test_cli_exits_nonzero_and_writes_fail_closed_output(tmp_path, capsys):
     assert clean_df["name"].tolist() == ["Ivan", "Petr", "Anna"]
 
     output = capsys.readouterr().out
-    assert "[FAIL] Column 'salary': Error:" in output
+    assert "[FAIL] Column 'salary': rule_execution_failed (ValueError)" in output
 
 
 @pytest.mark.parametrize(

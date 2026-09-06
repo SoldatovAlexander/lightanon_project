@@ -111,7 +111,8 @@ def test_engine_replaces_failed_pandas_column_with_na():
     clean_df = engine.run(df)
 
     assert clean_df["salary"].isna().all()
-    assert engine.audit_log[0]["status"].startswith("Error:")
+    assert engine.audit_log[0]["status"] == "error"
+    assert engine.audit_log[0]["error_code"] == "rule_execution_failed"
 
 
 def test_engine_replaces_failed_financial_column_with_na():
@@ -121,7 +122,7 @@ def test_engine_replaces_failed_financial_column_with_na():
     clean_df = engine.run(df)
 
     assert clean_df["amount"].isna().all()
-    assert engine.audit_log[0]["status"].startswith("Error:")
+    assert engine.audit_log[0]["status"] == "error"
 
 
 def test_engine_replaces_failed_top_coding_fixed_batch_column_with_na():
@@ -131,7 +132,7 @@ def test_engine_replaces_failed_top_coding_fixed_batch_column_with_na():
     clean_df = engine.run(df)
 
     assert clean_df["amount"].isna().all()
-    assert engine.audit_log[0]["status"].startswith("Error:")
+    assert engine.audit_log[0]["status"] == "error"
 
 
 def test_engine_replaces_failed_polars_column_with_null():
@@ -141,7 +142,42 @@ def test_engine_replaces_failed_polars_column_with_null():
     clean_df = engine.run(df)
 
     assert clean_df["amount"].null_count() == clean_df.height
-    assert engine.audit_log[0]["status"].startswith("Error:")
+    assert engine.audit_log[0]["status"] == "error"
+
+
+def test_polars_runtime_error_is_fail_closed_and_audited():
+    class FailingPolarsRule(la.rules.BaseRule):
+        def apply_polars(self, col_name):
+            return pl.col(col_name).cast(pl.Int64)
+
+    engine = la.Engine({"email": FailingPolarsRule()})
+    clean_df = engine.run(pl.DataFrame({"email": ["review@example.com"]}))
+
+    assert clean_df["email"].null_count() == 1
+    assert engine.audit_log == [
+        {
+            "column": "email",
+            "rule": "FailingPolarsRule",
+            "legal_basis": "Unknown",
+            "status": "error",
+            "error_code": "rule_execution_failed",
+            "exception_type": "InvalidOperationError",
+        }
+    ]
+
+
+def test_audit_report_does_not_include_exception_message_or_source_value():
+    class LeakyRule(la.rules.BaseRule):
+        def apply(self, series):
+            raise ValueError(f"untrusted input: {series.iloc[0]}")
+
+    engine = la.Engine({"email": LeakyRule()})
+    engine.run(pd.DataFrame({"email": ["review@example.com"]}))
+    report = engine.generate_report()
+
+    assert "review@example.com" not in report
+    assert "untrusted input" not in report
+    assert "rule_execution_failed (ValueError)" in report
 
 
 def test_report_generation(sample_df):

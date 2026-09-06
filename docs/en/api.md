@@ -33,7 +33,7 @@ Main methods:
 
 Audit behavior:
 - `run(...)` resets `audit_log`,
-- each schema column is marked with `Success`, `Missing column`, or `Error: ...`,
+- each schema column records `success` or `error` with a stable error code and exception class; exception messages are not exposed in the audit report,
 - if a rule fails, original values in that column are not preserved in the output: pandas columns are replaced with `pd.NA`, and polars columns with `null`.
 
 ## `BaseRule`

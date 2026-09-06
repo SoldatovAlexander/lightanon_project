@@ -23,78 +23,65 @@ class Engine:
 
         for column, rule in self.schema.items():
             if column not in df.columns:
-                self.audit_log.append(
-                    {
-                        "column": column,
-                        "rule": rule.name,
-                        "legal_basis": rule.legal_method,
-                        "status": "Missing column",
-                    }
-                )
+                self._record_error(column, rule, "missing_column")
                 continue
 
             try:
                 df_clean[column] = rule.apply(df[column])
-                self.audit_log.append(
-                    {
-                        "column": column,
-                        "rule": rule.name,
-                        "legal_basis": rule.legal_method,
-                        "status": "Success",
-                    }
-                )
+                self._record_success(column, rule)
             except Exception as exc:
                 df_clean[column] = pd.NA
-                self.audit_log.append(
-                    {
-                        "column": column,
-                        "rule": rule.name,
-                        "legal_basis": rule.legal_method,
-                        "status": f"Error: {exc}",
-                    }
-                )
+                self._record_error(column, rule, "rule_execution_failed", exc)
 
         return df_clean
 
     def _run_polars(self, df: pl.DataFrame) -> pl.DataFrame:
-        expressions = []
+        df_clean = df.clone()
 
         for column, rule in self.schema.items():
             if column not in df.columns:
-                self.audit_log.append(
-                    {
-                        "column": column,
-                        "rule": rule.name,
-                        "legal_basis": rule.legal_method,
-                        "status": "Missing column",
-                    }
-                )
+                self._record_error(column, rule, "missing_column")
                 continue
 
             try:
-                expressions.append(rule.apply_polars(column).alias(column))
-                self.audit_log.append(
-                    {
-                        "column": column,
-                        "rule": rule.name,
-                        "legal_basis": rule.legal_method,
-                        "status": "Success",
-                    }
-                )
+                transformed = df.select(rule.apply_polars(column).alias(column)).get_column(column)
+                df_clean = df_clean.with_columns(transformed)
+                self._record_success(column, rule)
             except Exception as exc:
-                expressions.append(pl.lit(None).alias(column))
-                self.audit_log.append(
-                    {
-                        "column": column,
-                        "rule": rule.name,
-                        "legal_basis": rule.legal_method,
-                        "status": f"Error: {exc}",
-                    }
-                )
+                df_clean = df_clean.with_columns(pl.lit(None).alias(column))
+                self._record_error(column, rule, "rule_execution_failed", exc)
 
-        if not expressions:
-            return df.clone()
-        return df.with_columns(expressions)
+        return df_clean
+
+    def _record_success(self, column: str, rule: BaseRule) -> None:
+        self.audit_log.append(
+            {
+                "column": column,
+                "rule": rule.name,
+                "legal_basis": rule.legal_method,
+                "status": "success",
+                "error_code": None,
+                "exception_type": None,
+            }
+        )
+
+    def _record_error(
+        self,
+        column: str,
+        rule: BaseRule,
+        error_code: str,
+        exc: Exception = None,
+    ) -> None:
+        self.audit_log.append(
+            {
+                "column": column,
+                "rule": rule.name,
+                "legal_basis": rule.legal_method,
+                "status": "error",
+                "error_code": error_code,
+                "exception_type": type(exc).__name__ if exc is not None else None,
+            }
+        )
 
     def generate_report(self) -> str:
         report = ["ANONYMIZATION PROCESSING REPORT", "=" * 60]
@@ -105,14 +92,17 @@ class Engine:
 
         for entry in self.audit_log:
             status = entry["status"]
-            if status == "Success":
+            if status == "success":
                 report.append(
                     f"[PASS] Column '{entry['column']}': Applied {entry['rule']}\n"
                     f"       -> Declared method: {entry['legal_basis']}"
                 )
                 methods_used.add(entry["legal_basis"])
             else:
-                report.append(f"[FAIL] Column '{entry['column']}': {status}")
+                details = entry["error_code"]
+                if entry["exception_type"]:
+                    details += f" ({entry['exception_type']})"
+                report.append(f"[FAIL] Column '{entry['column']}': {details}")
 
         report.append("-" * 60)
         report.append("SUMMARY:")
