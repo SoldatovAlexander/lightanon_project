@@ -121,6 +121,11 @@ masked_metadata = sanitizer.deanonymize_metadata(clean_metadata, policy="mask")
 ```python
 clean_text, clean_metadata = sanitizer.sanitize_document(text, metadata)
 restored_text, restored_metadata = sanitizer.deanonymize_document(clean_text, clean_metadata)
+
+result = sanitizer.sanitize_document_with_scope(text, metadata)
+restored_text, restored_metadata = sanitizer.deanonymize_document(
+    result.text, result.metadata, policy="restore", token_scope=result.token_scope
+)
 ```
 
 Текст и metadata используют один vault, поэтому одинаковые значения получают одинаковые токены.
@@ -140,11 +145,12 @@ report = sanitizer.scan("Email ivan@example.com, ИНН 7707083893")
 {
     "entities": {"EMAIL": 1, "INN": 1},
     "total": 2,
-    "residual_risk": "medium",
+    "active_rules": ["EMAIL", "PHONE", "PASSPORT", "SNILS", "INN", "CARD", "PERSON"],
+    "coverage": "heuristic",
 }
 ```
 
-`sanitize_with_report(...)` возвращает очищенный текст и отчет, где отдельно показаны найденные сущности до обработки и остаточные сущности после обработки.
+`sanitize_with_report(...)` возвращает очищенный текст и отчет, где отдельно показаны найденные сущности до обработки и остаточные сущности после обработки. `coverage="heuristic"` означает, что ноль совпадений не гарантирует отсутствие ПД во входе.
 
 ## Кастомное правило
 

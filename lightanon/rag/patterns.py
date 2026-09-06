@@ -25,8 +25,8 @@ class Patterns:
     # SNILS: 11 digits, often 123-456-789 00
     SNILS = r'\b\d{3}[\s\-]?\d{3}[\s\-]?\d{3}[\s\-]?\d{2}\b'
 
-    # INN (Tax ID): 10 or 12 digits
-    INN = r'\b(?:\d{10}|\d{12})\b'
+    # INN (Tax ID): 10 or 12 digits, optionally grouped after an explicit label.
+    INN = r'(?i:\bинн\s*[:№#-]?\s*(?:\d[\s-]?){9,11}\d\b)|\b(?:\d{10}|\d{12})\b'
 
     # --- ONLINE IDENTIFIERS ---
     # Combined nickname/login + resource. Tokenize the full pair because the
@@ -66,7 +66,7 @@ class Patterns:
 
     # Generic username only when it is explicitly labelled.
     # Ex: username: ivan_dev, логин: petrov
-    USERNAME = r'\b(?:username|user|login|nick|nickname|логин|ник(?:нейм)?|пользователь)\s*[:=]\s*@?[A-Za-z0-9][A-Za-z0-9_.-]{2,31}\b'
+    USERNAME = r'(?i:\b(?:username|user|login|nick|nickname|логин|ник(?:нейм)?|пользователь)\s*[:=]\s*@?[A-Za-z0-9][A-Za-z0-9_.-]{2,31}\b)'
 
     # --- TECHNICAL IDENTIFIERS ---
     # Ex: 192.168.1.10
@@ -138,14 +138,19 @@ class Patterns:
     BIK = r'(?i:\bБИК\s*[:№#-]?\s*\d{9}\b)'
 
     # --- FINANCE ---
-    # Credit Card: 13-19 digits, potentially grouped
-    CREDIT_CARD = r'\b(?:\d{4}[\s\-]?){3}\d{4}\b'
+    # Credit Card: 13-19 digits, potentially grouped. The boundaries prevent
+    # matching a fragment of longer identifiers.
+    CREDIT_CARD = r'(?<!\d)(?:\d[\s-]?){12,18}\d(?!\d)'
 
     # --- NAMES (HEURISTIC) ---
     # Warning: Regex for names is never 100% accurate.
-    # Matches: Capitalized Cyrillic words (Name Surname)
-    # Ex: Иван Иванов, Петров П.П.
+    # Matches: capitalized Cyrillic names, hyphenated surnames, and initials in
+    # either order. This remains a heuristic, not a proof of person identity.
     NAME_RU_BROAD = (
-        r'\b(?:[А-ЯЁ][а-яё]+\s+[А-ЯЁ][а-яё]+(?:\s+[А-ЯЁ][а-яё]+)?'
-        r'|[А-ЯЁ][а-яё]+\s+[А-ЯЁ]\.\s*[А-ЯЁ]\.)(?!\w)'
+        r'\b(?:'
+        r'[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?\s+[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?'
+        r'(?:\s+[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?)?'
+        r'|[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?\s+[А-ЯЁ]\.\s*[А-ЯЁ]\.'
+        r'|[А-ЯЁ]\.\s*[А-ЯЁ]\.\s*[А-ЯЁ][а-яё]+(?:-[А-ЯЁ][а-яё]+)?'
+        r')(?!\w)'
     )

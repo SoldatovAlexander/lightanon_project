@@ -111,8 +111,10 @@ Main methods:
 - `sanitize(text: str) -> str`
 - `sanitize_with_scope(text: str) -> Tuple[str, Dict[str, int]]`
 - `sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]`
+- `sanitize_metadata_with_scope(metadata: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, int]]`
 - `deanonymize_metadata(metadata: Dict[str, Any], policy: str = "mask", allowed_entity_types=None, token_scope=None) -> Dict[str, Any]`
 - `sanitize_document(text: str, metadata: Optional[Dict[str, Any]] = None) -> Tuple[str, Dict[str, Any]]`
+- `sanitize_document_with_scope(text: str, metadata: Optional[Dict[str, Any]] = None) -> SanitizedDocument`
 - `deanonymize_document(text: str, metadata: Optional[Dict[str, Any]] = None, policy: str = "mask", allowed_entity_types=None, token_scope=None) -> Tuple[str, Dict[str, Any]]`
 - `scan(text: str) -> Dict[str, object]`
 - `sanitize_with_report(text: str) -> Tuple[str, Dict[str, object]]`
@@ -137,10 +139,10 @@ restored = sanitizer.deanonymize(answer, policy="restore", token_scope=token_sco
 
 `sanitize_metadata(...)` recursively sanitizes string values in `dict`, `list`, `tuple`, and `set` containers while preserving non-string values. This is useful for RAG documents where personal data may live in `source_url`, `author`, `tags`, `file_path`, and other metadata fields.
 `deanonymize_metadata(...)` performs symmetric metadata restoration with the same policies as `deanonymize(...)`.
-`sanitize_document(...)` and `deanonymize_document(...)` process text and metadata in one operation with a shared vault.
+`sanitize_document(...)` and `deanonymize_document(...)` process text and metadata in one operation with a shared vault. `sanitize_document_with_scope(...)` returns `SanitizedDocument(text, metadata, token_scope)`; its scope includes only replacements made during this call.
 
-`scan(...)` detects entities without replacing text or writing to the vault. The report contains type counters and risk level, but not original values.
-`sanitize_with_report(...)` returns sanitized text plus a report with entities before processing and residual entities after processing.
+`scan(...)` detects entities without replacing text or writing to the vault. The report contains type counters, active rules, and `coverage="heuristic"`; zero detections are not proof that personal data is absent.
+`sanitize_with_report(...)` returns sanitized text plus the same coverage information for findings before and after processing.
 `deanonymize(...)` defaults to `mask`; `no_personal_data` leaves tokens unchanged. `restore` and `restore_allowed_only` require a token scope from `sanitize_with_scope(...)`, so only tokens from that input and only their original occurrence counts may be restored.
 
 ### `BaseVault`

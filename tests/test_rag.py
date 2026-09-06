@@ -531,7 +531,7 @@ def test_deanonymize_metadata_honors_policy():
     )
 
     assert masked["email"] == "[EMAIL]"
-    assert masked["inn"] == "ИНН [INN]"
+    assert masked["inn"] == "[INN]"
     assert restored_allowed["email"] == "ivan@example.com"
     assert "7707083893" not in restored_allowed["inn"]
     assert re.search(r"\[INN_(?:[a-f0-9]{8}|[a-f0-9]{32})\]", restored_allowed["inn"])
@@ -557,6 +557,79 @@ def test_sanitize_document_sanitizes_text_and_metadata_with_same_vault():
     assert text_token == metadata_token
     assert "github.com/ivan_dev" not in clean_metadata["source_url"]
     assert re.search(r"\[PROFILE_URL_(?:[a-f0-9]{8}|[a-f0-9]{32})\]", clean_metadata["source_url"])
+
+
+def test_sanitize_metadata_with_scope_excludes_existing_tokens():
+    sanitizer = TextSanitizer(enabled_rules=["EMAIL"])
+    original_token = "[EMAIL_aaaaaaaa]"
+
+    clean_metadata, scope = sanitizer.sanitize_metadata_with_scope(
+        {"existing": original_token, "email": "ivan@example.com"}
+    )
+
+    assert clean_metadata["existing"] == original_token
+    assert original_token not in scope
+    assert sum(scope.values()) == 1
+
+
+def test_sanitize_document_with_scope_combines_text_and_metadata_occurrences():
+    sanitizer = TextSanitizer(enabled_rules=["EMAIL"])
+    result = sanitizer.sanitize_document_with_scope(
+        "Email: ivan@example.com",
+        {"contact": "ivan@example.com", "existing": "[EMAIL_aaaaaaaa]"},
+    )
+
+    token = re.search(r"\[EMAIL_(?:[a-f0-9]{8}|[a-f0-9]{32})\]", result.text).group()
+    assert result.metadata["contact"] == token
+    assert result.metadata["existing"] == "[EMAIL_aaaaaaaa]"
+    assert result.token_scope == {token: 2}
+    restored_text, restored_metadata = sanitizer.deanonymize_document(
+        result.text,
+        result.metadata,
+        policy="restore",
+        token_scope=result.token_scope,
+    )
+    assert restored_text == "Email: ivan@example.com"
+    assert restored_metadata["contact"] == "ivan@example.com"
+    assert restored_metadata["existing"] == "[EMAIL_aaaaaaaa]"
+
+
+@pytest.mark.parametrize(
+    ("rule", "text", "entity_type"),
+    [
+        ("PERSON", "Контакт: Анна-Мария Иванова", "PERSON"),
+        ("PERSON", "Ответственный: И.И. Петров", "PERSON"),
+        ("PASSPORT", "Паспорт 4500 123456", "PASSPORT"),
+        ("PHONE", "Телефон +7 (900) 123-45-67", "PHONE"),
+        ("SNILS", "СНИЛС 123-456-789 00", "SNILS"),
+        ("CARD", "Карта 4222222222222", "CARD"),
+        ("CARD", "Карта 4222-2222-2222-2222-222", "CARD"),
+        ("INN", "ИНН 7707 083 893", "INN"),
+        ("USERNAME", "Логин: Ivan.Dev", "USERNAME"),
+        ("PROFILE_URL", "https://github.com/Ivan.Dev", "PROFILE_URL"),
+        ("SOCIAL_HANDLE", "@Ivan_Dev", "SOCIAL_HANDLE"),
+    ],
+)
+def test_rag_detection_corpus_positive_examples(rule, text, entity_type):
+    clean = TextSanitizer(enabled_rules=[rule]).sanitize(text)
+
+    assert text not in clean
+    assert re.search(rf"\[{entity_type}_(?:[a-f0-9]{{8}}|[a-f0-9]{{32}})\]", clean)
+
+
+@pytest.mark.parametrize(
+    ("rule", "text"),
+    [
+        ("PASSPORT", "ИНН 7707083893"),
+        ("CARD", "Код 123456789012"),
+        ("CARD", "Код 12345678901234567890"),
+        ("PHONE", "Версия 899912345678"),
+        ("SOCIAL_HANDLE", "Email person@example.com"),
+        ("USERNAME", "Свободный текст без метки ivan_dev"),
+    ],
+)
+def test_rag_detection_corpus_negative_examples(rule, text):
+    assert TextSanitizer(enabled_rules=[rule]).sanitize(text) == text
 
 
 def test_deanonymize_document_restores_text_and_metadata():
@@ -596,7 +669,8 @@ def test_scan_reports_entity_counts_without_values():
 
     assert report["entities"] == {"ONLINE_ACCOUNT": 1, "EMAIL": 1, "INN": 1}
     assert report["total"] == 3
-    assert report["residual_risk"] == "high"
+    assert report["coverage"] == "heuristic"
+    assert "ONLINE_ACCOUNT" in report["active_rules"]
     assert "ivan@example.com" not in str(report)
     assert "7707083893" not in str(report)
 
@@ -621,7 +695,8 @@ def test_sanitize_with_report_includes_residual_scan():
     assert report["total"] == 1
     assert report["residual_entities"] == {}
     assert report["residual_total"] == 0
-    assert report["residual_risk"] == "low"
+    assert report["coverage"] == "heuristic"
+    assert report["residual_coverage"] == "heuristic"
 
 
 def test_file_vault_persists_mappings(tmp_path):

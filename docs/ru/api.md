@@ -111,8 +111,10 @@ RAG-блок не является набором `BaseRule` для колоно
 - `sanitize(text: str) -> str`
 - `sanitize_with_scope(text: str) -> Tuple[str, Dict[str, int]]`
 - `sanitize_metadata(metadata: Dict[str, Any]) -> Dict[str, Any]`
+- `sanitize_metadata_with_scope(metadata: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, int]]`
 - `deanonymize_metadata(metadata: Dict[str, Any], policy: str = "mask", allowed_entity_types=None, token_scope=None) -> Dict[str, Any]`
 - `sanitize_document(text: str, metadata: Optional[Dict[str, Any]] = None) -> Tuple[str, Dict[str, Any]]`
+- `sanitize_document_with_scope(text: str, metadata: Optional[Dict[str, Any]] = None) -> SanitizedDocument`
 - `deanonymize_document(text: str, metadata: Optional[Dict[str, Any]] = None, policy: str = "mask", allowed_entity_types=None, token_scope=None) -> Tuple[str, Dict[str, Any]]`
 - `scan(text: str) -> Dict[str, object]`
 - `sanitize_with_report(text: str) -> Tuple[str, Dict[str, object]]`
@@ -137,10 +139,10 @@ restored = sanitizer.deanonymize(answer, policy="restore", token_scope=token_sco
 
 `sanitize_metadata(...)` рекурсивно обрабатывает строковые значения в `dict`, `list`, `tuple` и `set`, сохраняя нестроковые значения. Это полезно для RAG-документов, где персональные данные могут находиться в `source_url`, `author`, `tags`, `file_path` и других metadata-полях.
 `deanonymize_metadata(...)` выполняет симметричное восстановление metadata с теми же политиками, что и `deanonymize(...)`.
-`sanitize_document(...)` и `deanonymize_document(...)` обрабатывают текст и metadata одной операцией с общим vault.
+`sanitize_document(...)` и `deanonymize_document(...)` обрабатывают текст и metadata одной операцией с общим vault. `sanitize_document_with_scope(...)` возвращает `SanitizedDocument(text, metadata, token_scope)`; его scope включает только замены, сделанные в этом вызове.
 
-`scan(...)` ищет сущности без замены текста и без записи в vault. Отчет содержит счетчики по типам и уровень риска, но не исходные значения.
-`sanitize_with_report(...)` возвращает очищенный текст и отчет с сущностями до обработки и остаточными сущностями после обработки.
+`scan(...)` ищет сущности без замены текста и без записи в vault. Отчет содержит счетчики по типам, активные правила и `coverage="heuristic"`; ноль совпадений не доказывает отсутствие ПД.
+`sanitize_with_report(...)` возвращает очищенный текст и ту же информацию о покрытии до и после обработки.
 `deanonymize(...)` по умолчанию использует `mask`; `no_personal_data` оставляет токены. Для `restore` и `restore_allowed_only` нужен token scope из `sanitize_with_scope(...)`, поэтому восстанавливаются только токены этого входа и только в количестве исходных вхождений.
 
 ### `BaseVault`

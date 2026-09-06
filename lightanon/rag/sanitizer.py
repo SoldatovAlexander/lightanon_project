@@ -1,8 +1,18 @@
 import re
 import secrets
+from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 from .vault import BaseVault, MemoryVault
 from .patterns import Patterns
+
+
+@dataclass(frozen=True)
+class SanitizedDocument:
+    """Sanitized RAG document and the bounded restoration scope it created."""
+
+    text: str
+    metadata: Dict[str, Any]
+    token_scope: Dict[str, int]
 
 
 class TextSanitizer:
@@ -246,11 +256,7 @@ class TextSanitizer:
         Detect entities without modifying text or writing to the vault.
         """
         entities = self._entity_counts(text)
-        return {
-            "entities": entities,
-            "total": sum(entities.values()),
-            "residual_risk": self._risk_level(entities),
-        }
+        return self._detection_report(entities)
 
     def sanitize_with_report(self, text: str) -> Tuple[str, Dict[str, object]]:
         """
@@ -262,9 +268,11 @@ class TextSanitizer:
         report = {
             "entities": before["entities"],
             "total": before["total"],
+            "active_rules": before["active_rules"],
+            "coverage": before["coverage"],
             "residual_entities": residual_entities,
             "residual_total": sum(residual_entities.values()),
-            "residual_risk": self._risk_level(residual_entities),
+            "residual_coverage": "heuristic",
         }
         return clean, report
 
@@ -274,13 +282,13 @@ class TextSanitizer:
             counts[entity_type] = counts.get(entity_type, 0) + 1
         return counts
 
-    def _risk_level(self, entities: Dict[str, int]) -> str:
-        total = sum(entities.values())
-        if total == 0:
-            return "low"
-        if total <= 2:
-            return "medium"
-        return "high"
+    def _detection_report(self, entities: Dict[str, int]) -> Dict[str, object]:
+        return {
+            "entities": entities,
+            "total": sum(entities.values()),
+            "active_rules": [entity_type for entity_type, _ in self.rules],
+            "coverage": "heuristic",
+        }
 
     def sanitize_metadata(self, metadata: Dict[str, Any]) -> Dict[str, Any]:
         """
@@ -290,6 +298,13 @@ class TextSanitizer:
         if not isinstance(metadata, dict):
             raise ValueError("metadata must be a dictionary")
         return self._sanitize_metadata_value(metadata)
+
+    def sanitize_metadata_with_scope(self, metadata: Dict[str, Any]) -> Tuple[Dict[str, Any], Dict[str, int]]:
+        """Sanitize metadata and return scope only for replacements made in it."""
+        if not isinstance(metadata, dict):
+            raise ValueError("metadata must be a dictionary")
+        scope: Dict[str, int] = {}
+        return self._sanitize_metadata_value_with_scope(metadata, scope), scope
 
     def deanonymize_metadata(
         self,
@@ -316,9 +331,21 @@ class TextSanitizer:
         """
         Sanitize RAG document text and metadata with the same vault.
         """
-        clean_text = self.sanitize(text)
-        clean_metadata = self.sanitize_metadata(metadata or {})
-        return clean_text, clean_metadata
+        result = self.sanitize_document_with_scope(text, metadata)
+        return result.text, result.metadata
+
+    def sanitize_document_with_scope(
+        self,
+        text: str,
+        metadata: Optional[Dict[str, Any]] = None,
+    ) -> SanitizedDocument:
+        """Sanitize text and metadata with one bounded restoration scope."""
+        clean_text, text_scope = self.sanitize_with_scope(text)
+        clean_metadata, metadata_scope = self.sanitize_metadata_with_scope(metadata or {})
+        scope = dict(text_scope)
+        for token, count in metadata_scope.items():
+            scope[token] = scope.get(token, 0) + count
+        return SanitizedDocument(clean_text, clean_metadata, scope)
 
     def deanonymize_document(
         self,
@@ -348,6 +375,22 @@ class TextSanitizer:
             return tuple(self._sanitize_metadata_value(item) for item in value)
         if isinstance(value, set):
             return {self._sanitize_metadata_value(item) for item in value}
+        return value
+
+    def _sanitize_metadata_value_with_scope(self, value: Any, scope: Dict[str, int]) -> Any:
+        if isinstance(value, str):
+            clean, value_scope = self.sanitize_with_scope(value)
+            for token, count in value_scope.items():
+                scope[token] = scope.get(token, 0) + count
+            return clean
+        if isinstance(value, dict):
+            return {key: self._sanitize_metadata_value_with_scope(item, scope) for key, item in value.items()}
+        if isinstance(value, list):
+            return [self._sanitize_metadata_value_with_scope(item, scope) for item in value]
+        if isinstance(value, tuple):
+            return tuple(self._sanitize_metadata_value_with_scope(item, scope) for item in value)
+        if isinstance(value, set):
+            return {self._sanitize_metadata_value_with_scope(item, scope) for item in value}
         return value
 
     def _deanonymize_metadata_value(

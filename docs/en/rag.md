@@ -121,6 +121,11 @@ To process a whole RAG document, use document-level methods:
 ```python
 clean_text, clean_metadata = sanitizer.sanitize_document(text, metadata)
 restored_text, restored_metadata = sanitizer.deanonymize_document(clean_text, clean_metadata)
+
+result = sanitizer.sanitize_document_with_scope(text, metadata)
+restored_text, restored_metadata = sanitizer.deanonymize_document(
+    result.text, result.metadata, policy="restore", token_scope=result.token_scope
+)
 ```
 
 Text and metadata share one vault, so repeated values receive the same tokens.
@@ -140,11 +145,12 @@ Example report:
 {
     "entities": {"EMAIL": 1, "INN": 1},
     "total": 2,
-    "residual_risk": "medium",
+    "active_rules": ["EMAIL", "PHONE", "PASSPORT", "SNILS", "INN", "CARD", "PERSON"],
+    "coverage": "heuristic",
 }
 ```
 
-`sanitize_with_report(...)` returns sanitized text and a report with entities found before processing and residual entities after processing.
+`sanitize_with_report(...)` returns sanitized text and a report with entities found before processing and residual entities after processing. `coverage="heuristic"` means that zero matches are not a guarantee that the input contains no personal data.
 
 ## Custom Pattern
 
