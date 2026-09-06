@@ -106,6 +106,7 @@ RAG-блок не является набором `BaseRule` для колоно
 - может принять явный список правил через `rules=[("EMAIL", Patterns.EMAIL), ...]`,
 - поддерживает профили правил: `basic`, `ru_152`, `ru_152_strict`,
 - поддерживает дополнительный режим скрытия реквизитов организаций через `business_mode`.
+- принимает явные объекты `OrganizationProfile`, чтобы различать собственную компанию и контрагентов.
 
 Основные методы:
 - `sanitize(text: str) -> str`
@@ -125,6 +126,20 @@ RAG-блок не является набором `BaseRule` для колоно
 По умолчанию `INN` выключен, чтобы голые 10/12 цифр не конфликтовали с документами без контекста.
 Правило `ONLINE_ACCOUNT` предназначено для составных интернет-идентификаторов, например `никнейм ivan_dev на Habr` или `Telegram: @ivanov`, и токенизирует такую связку целиком.
 `business_mode="company"` добавляет правила для реквизитов компании поверх выбранного профиля. `business_mode="company_and_counterparties"` дополнительно включает компактные блоки реквизитов контрагентов. Приоритет настройки: `rules` > `enabled_rules` > `profile`; `business_mode` применяется к выбранному набору, если `rules` не передан явно.
+
+Когда важны роли, передайте известные организации явно. `company` скрывает только профиль собственной компании; `company_and_counterparties` скрывает обе роли. Обработка неизвестной организации задана явно: `report` оставляет её без изменения и сообщает счётчик, `mask` использует общие правила организаций, `reject` останавливает обработку.
+
+```python
+from lightanon.rag import OrganizationProfile, TextSanitizer
+
+sanitizer = TextSanitizer(
+    business_mode="company",
+    organization_profiles=[
+        OrganizationProfile(role="company", full_name='ООО "Ромашка"', inn="7707083893"),
+    ],
+    unknown_organization_policy="reject",
+)
+```
 
 Пример:
 

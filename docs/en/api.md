@@ -106,6 +106,7 @@ Public exports:
 - can accept an explicit rule list with `rules=[("EMAIL", Patterns.EMAIL), ...]`,
 - supports rule profiles: `basic`, `ru_152`, `ru_152_strict`,
 - supports optional organization-requisites protection with `business_mode`.
+- accepts explicit `OrganizationProfile` objects to distinguish the company from counterparties.
 
 Main methods:
 - `sanitize(text: str) -> str`
@@ -125,6 +126,20 @@ Built-in rules: `EMAIL`, `PHONE`, `PASSPORT`, `SNILS`, `INN`, `CARD`, `PERSON`, 
 `INN` is disabled by default so bare 10/12 digit numbers do not conflict with document patterns without context.
 `ONLINE_ACCOUNT` targets combined online identifiers such as `nickname ivan_dev on Habr` or `Telegram: @ivanov` and tokenizes the pair as one entity.
 `business_mode="company"` adds company-requisites rules on top of the selected profile. `business_mode="company_and_counterparties"` additionally enables compact counterparty-requisites blocks. Configuration priority: `rules` > `enabled_rules` > `profile`; `business_mode` is applied to the selected rule set when `rules` is not passed explicitly.
+
+When roles matter, provide known organizations explicitly. `company` masks only the own-company profile; `company_and_counterparties` masks both roles. Unknown organization handling is explicit: `report` leaves it unchanged and reports a count, `mask` uses generic organization rules, and `reject` stops processing.
+
+```python
+from lightanon.rag import OrganizationProfile, TextSanitizer
+
+sanitizer = TextSanitizer(
+    business_mode="company",
+    organization_profiles=[
+        OrganizationProfile(role="company", full_name='OOO "Romashka"', inn="7707083893"),
+    ],
+    unknown_organization_policy="reject",
+)
+```
 
 Example:
 

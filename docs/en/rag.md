@@ -227,3 +227,5 @@ lightanon rag migrate-vault legacy.json vault.v2 --vault-key-env LIGHTANON_VAULT
 `--profile` enables a built-in rule profile. Available profiles: `basic`, `ru_152`, `ru_152_strict`.
 `--business-mode` adds organization-requisites protection on top of the selected profile. Available modes: `none`, `company`, `company_and_counterparties`.
 `--rules` enables only the listed built-in rules and is useful when you need to disable the broad name heuristic, explicitly enable `INN`, or process online identifiers.
+
+For application integrations where the role is important, pass `OrganizationProfile` objects to `TextSanitizer`. This lets `company` mask only known own-company values while `company_and_counterparties` also masks known counterparties. Set `unknown_organization_policy` to `report`, `mask`, or `reject`; generic no-profile mode remains available for compatibility but cannot infer the role of an organization from text alone.

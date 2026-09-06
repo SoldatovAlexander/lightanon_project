@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, Iterable, List, Mapping, Optional, Tuple
 from .vault import BaseVault, MemoryVault
 from .patterns import Patterns
+from .organizations import OrganizationProfile
 
 
 @dataclass(frozen=True)
@@ -108,6 +109,7 @@ class TextSanitizer:
         "COUNTERPARTY_REQUISITES",
     )
     BUSINESS_MODES: Tuple[str, ...] = ("none", "company", "company_and_counterparties")
+    UNKNOWN_ORGANIZATION_POLICIES: Tuple[str, ...] = ("report", "mask", "reject")
 
     def __init__(
         self,
@@ -116,6 +118,8 @@ class TextSanitizer:
         rules: Optional[List[Tuple[str, str]]] = None,
         profile: str = "basic",
         business_mode: str = "none",
+        organization_profiles: Optional[Iterable[OrganizationProfile]] = None,
+        unknown_organization_policy: str = "report",
     ):
         """
         Initialize the RAG Sanitizer.
@@ -124,16 +128,65 @@ class TextSanitizer:
         :param rules: Explicit rule list as (entity_type, regex pattern) tuples.
         :param profile: Built-in rule profile. One of: basic, ru_152, ru_152_strict.
         :param business_mode: Organization-requisites mode: none, company, company_and_counterparties.
+        :param organization_profiles: Known organizations and their document roles.
+        :param unknown_organization_policy: report, mask, or reject for organizations not in profiles.
         """
         self.vault = vault if vault else MemoryVault()
+        self.organization_profiles = self._validate_organization_profiles(organization_profiles)
+        self.unknown_organization_policy = self._validate_unknown_organization_policy(unknown_organization_policy)
+        self.business_mode = business_mode.lower()
 
         # Priority matters: Specific patterns first (Email), generic last (Names)
         if rules is not None:
             self.rules = [(self._normalize_entity_type(name), pattern) for name, pattern in rules]
         else:
             selected_rules = enabled_rules if enabled_rules is not None else self._rules_for_profile(profile)
-            selected_rules = self._apply_business_mode(selected_rules, business_mode)
-            self.rules = self._build_rules(selected_rules)
+            self.rules = self._rules_with_organization_profiles(selected_rules, business_mode)
+
+    def _validate_organization_profiles(
+        self, organization_profiles: Optional[Iterable[OrganizationProfile]]
+    ) -> Tuple[OrganizationProfile, ...]:
+        if organization_profiles is None:
+            return ()
+        profiles = tuple(organization_profiles)
+        if any(not isinstance(profile, OrganizationProfile) for profile in profiles):
+            raise ValueError("organization_profiles must contain OrganizationProfile instances")
+        return profiles
+
+    def _validate_unknown_organization_policy(self, policy: str) -> str:
+        if policy not in self.UNKNOWN_ORGANIZATION_POLICIES:
+            raise ValueError(f"Unknown organization policy: {policy}")
+        return policy
+
+    def _rules_with_organization_profiles(
+        self, selected_rules: Iterable[str], business_mode: str
+    ) -> List[Tuple[str, str]]:
+        mode = business_mode.lower()
+        if mode not in self.BUSINESS_MODES:
+            raise ValueError(f"Unknown business mode: {business_mode}")
+        if not self.organization_profiles or mode == "none":
+            return self._build_rules(self._apply_business_mode(selected_rules, mode))
+
+        base_rules = tuple(selected_rules)
+        profile_rules = self._organization_profile_rules(mode)
+        if self.unknown_organization_policy == "mask":
+            base_rules = self._apply_business_mode(base_rules, mode)
+        return profile_rules + self._build_rules(base_rules)
+
+    def _organization_profile_rules(self, business_mode: str) -> List[Tuple[str, str]]:
+        allowed_roles = {"company"} if business_mode == "company" else {"company", "counterparty"}
+        rules = []
+        for profile in self.organization_profiles:
+            if profile.role not in allowed_roles:
+                continue
+            entity_type = f"ORGANIZATION_{profile.role.upper()}"
+            for value in profile.values():
+                rules.append((entity_type, self._literal_organization_pattern(value)))
+        return rules
+
+    @staticmethod
+    def _literal_organization_pattern(value: str) -> str:
+        return rf"(?<![A-Za-zА-Яа-яЁё0-9]){re.escape(value)}(?![A-Za-zА-Яа-яЁё0-9])"
 
     def _rules_for_profile(self, profile: str) -> Tuple[str, ...]:
         profile_name = profile.lower()
@@ -210,7 +263,9 @@ class TextSanitizer:
     def sanitize_with_scope(self, text: str) -> Tuple[str, Dict[str, int]]:
         """Sanitize text and return a bounded restoration scope for its tokens."""
         replacements = []
-        for start, end, entity_type, real_value in self._find_entities(text):
+        entities = self._find_entities(text)
+        self._reject_unknown_organizations(text, entities)
+        for start, end, entity_type, real_value in entities:
             token = self._get_or_create_token(entity_type, real_value)
             replacements.append((start, end, token))
 
@@ -255,8 +310,13 @@ class TextSanitizer:
         """
         Detect entities without modifying text or writing to the vault.
         """
-        entities = self._entity_counts(text)
-        return self._detection_report(entities)
+        found_entities = self._find_entities(text)
+        self._reject_unknown_organizations(text, found_entities)
+        report = self._detection_report(self._counts_from_entities(found_entities))
+        unknown_count = self._unknown_organization_count(text, found_entities)
+        if unknown_count:
+            report["unknown_organizations"] = unknown_count
+        return report
 
     def sanitize_with_report(self, text: str) -> Tuple[str, Dict[str, object]]:
         """
@@ -277,10 +337,29 @@ class TextSanitizer:
         return clean, report
 
     def _entity_counts(self, text: str) -> Dict[str, int]:
+        return self._counts_from_entities(self._find_entities(text))
+
+    @staticmethod
+    def _counts_from_entities(entities: Iterable[Tuple[int, int, str, str]]) -> Dict[str, int]:
         counts: Dict[str, int] = {}
-        for _, _, entity_type, _ in self._find_entities(text):
+        for _, _, entity_type, _ in entities:
             counts[entity_type] = counts.get(entity_type, 0) + 1
         return counts
+
+    def _unknown_organization_count(self, text: str, entities: List[Tuple[int, int, str, str]]) -> int:
+        if not self.organization_profiles or self.business_mode == "none":
+            return 0
+        protected_spans = [(start, end) for start, end, _, _ in entities if entity_type.startswith("ORGANIZATION_")]
+        return sum(
+            1
+            for _, pattern in self._build_rules(self.COMPANY_RULE_NAMES + self.COUNTERPARTY_RULE_NAMES)
+            for match in re.finditer(pattern, text)
+            if not self._overlaps_existing_span(*match.span(), protected_spans)
+        )
+
+    def _reject_unknown_organizations(self, text: str, entities: List[Tuple[int, int, str, str]]) -> None:
+        if self.organization_profiles and self.unknown_organization_policy == "reject" and self._unknown_organization_count(text, entities):
+            raise ValueError("Unknown organization detected; add a profile or choose report/mask policy")
 
     def _detection_report(self, entities: Dict[str, int]) -> Dict[str, object]:
         return {

@@ -10,6 +10,7 @@ from lightanon.rag import (
     FileVault,
     MappingConflict,
     MemoryVault,
+    OrganizationProfile,
     Patterns,
     TextSanitizer,
     migrate_legacy_file_vault,
@@ -380,6 +381,94 @@ def test_business_mode_sanitizes_metadata():
     assert "7707083893" not in clean["inn"]
     assert re.search(r"\[ORGANIZATION_NAME_(?:[a-f0-9]{8}|[a-f0-9]{32})\]", clean["company"])
     assert re.search(r"\[COMPANY_INN_(?:[a-f0-9]{8}|[a-f0-9]{32})\]", clean["inn"])
+
+
+def test_organization_profiles_distinguish_company_from_counterparty():
+    company = OrganizationProfile(
+        role="company",
+        full_name='ООО "Ромашка"',
+        short_names=("Ромашка",),
+        inn="7707083893",
+    )
+    counterparty = OrganizationProfile(
+        role="counterparty",
+        full_name='АО "Вектор"',
+        aliases=("Вектор",),
+        inn="7708123456",
+    )
+    text = 'ООО "Ромашка", ИНН 7707083893; контрагент АО "Вектор", ИНН 7708123456.'
+
+    company_only = TextSanitizer(
+        business_mode="company",
+        organization_profiles=[company, counterparty],
+    ).sanitize(text)
+    all_organizations = TextSanitizer(
+        business_mode="company_and_counterparties",
+        organization_profiles=[company, counterparty],
+    ).sanitize(text)
+
+    assert 'ООО "Ромашка"' not in company_only
+    assert "7707083893" not in company_only
+    assert 'АО "Вектор"' in company_only
+    assert "7708123456" in company_only
+    assert re.search(r"\[ORGANIZATION_COMPANY_(?:[a-f0-9]{8}|[a-f0-9]{32})\]", company_only)
+    assert 'ООО "Ромашка"' not in all_organizations
+    assert 'АО "Вектор"' not in all_organizations
+    assert re.search(r"\[ORGANIZATION_COUNTERPARTY_(?:[a-f0-9]{8}|[a-f0-9]{32})\]", all_organizations)
+
+
+def test_organization_profile_alias_is_sanitized_with_the_same_role():
+    profile = OrganizationProfile(role="company", full_name='ООО "Ромашка"', aliases=("Ромашка",))
+    sanitizer = TextSanitizer(business_mode="company", organization_profiles=[profile])
+
+    clean = sanitizer.sanitize('ООО "Ромашка" (Ромашка)')
+
+    tokens = re.findall(r"\[ORGANIZATION_COMPANY_(?:[a-f0-9]{8}|[a-f0-9]{32})\]", clean)
+    assert len(tokens) == 2
+    assert tokens[0] != tokens[1]
+
+
+def test_unknown_organization_policies_are_explicit():
+    profile = OrganizationProfile(role="company", full_name='ООО "Ромашка"')
+    text = 'ООО "Незнакомая", ИНН 7708123456.'
+
+    report_sanitizer = TextSanitizer(
+        business_mode="company",
+        organization_profiles=[profile],
+        unknown_organization_policy="report",
+    )
+    assert report_sanitizer.sanitize(text) == text
+    assert report_sanitizer.scan(text)["unknown_organizations"] > 0
+
+    masked = TextSanitizer(
+        business_mode="company",
+        organization_profiles=[profile],
+        unknown_organization_policy="mask",
+    ).sanitize(text)
+    assert "Незнакомая" not in masked
+    assert "7708123456" not in masked
+
+    with pytest.raises(ValueError, match="Unknown organization detected"):
+        TextSanitizer(
+            business_mode="company",
+            organization_profiles=[profile],
+            unknown_organization_policy="reject",
+        ).sanitize(text)
+
+
+def test_organization_profile_validates_role_and_policy():
+    with pytest.raises(ValueError, match="role"):
+        OrganizationProfile(role="vendor", full_name="Example")
+    with pytest.raises(ValueError, match="Unknown organization policy"):
+        TextSanitizer(unknown_organization_policy="ignore")
+
+
+def test_organization_profile_is_inactive_without_business_mode():
+    profile = OrganizationProfile(role="company", full_name='ООО "Ромашка"', aliases=["Ромашка"])
+    sanitizer = TextSanitizer(organization_profiles=[profile])
+
+    assert sanitizer.sanitize('ООО "Ромашка"') == 'ООО "Ромашка"'
+    assert "unknown_organizations" not in sanitizer.scan('ООО "Незнакомая"')
 
 
 def test_unknown_business_mode_fails_fast():
