@@ -9,12 +9,12 @@ Fix:
 pip install -r requirements.txt
 ```
 
-## `Warning: Unknown rule '...'`
+## YAML schema error
 Cause:
-- YAML references a class not present in `lightanon.rules` or `lightanon.financial`.
+- YAML names an unknown rule, omits `method`, supplies invalid parameters, or is empty.
 
 Fix:
-- verify class name and constructor parameters.
+- verify the documented rule name and constructor parameters; the CLI does not create output for an invalid schema.
 
 ## A column becomes empty after processing
 Cause:

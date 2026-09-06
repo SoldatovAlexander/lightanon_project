@@ -107,9 +107,8 @@ lightanon rag clear-vault vault.json
 ```
 
 ## Runtime Behavior
-- unknown rule in YAML: skipped with warning,
-- invalid YAML item format: skipped with warning,
-- empty schema: input is copied to output,
+- the YAML schema must contain at least one known rule with valid parameters; an error stops the command before output is written,
+- `input_file`, `output_file`, and `config` must refer to different files,
 - rule application errors replace the affected output column and make the CLI exit with code `1`,
 - report is printed at the end.
 
@@ -124,3 +123,4 @@ For RAG CLI:
 - repeated `sanitize` with the same vault reuses existing tokens,
 - `restore` requires the same vault used during `sanitize`,
 - corrupted or incorrectly structured vault files fail the command.
+- `sanitize` and `restore` require distinct input, output, vault, and scope files; overlapping paths are rejected before a file is written.

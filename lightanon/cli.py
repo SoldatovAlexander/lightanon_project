@@ -2,6 +2,7 @@ import argparse
 import json
 import os
 import sys
+import tempfile
 from pathlib import Path
 
 import yaml
@@ -9,38 +10,44 @@ import pandas as pd
 import polars as pl
 import lightanon as la
 
+RULE_REGISTRY = {
+    "Hash": la.rules.Hash,
+    "Mask": la.rules.Mask,
+    "GaussianNoise": la.rules.GaussianNoise,
+    "Generalize": la.rules.Generalize,
+    "MultiplicativeNoise": la.financial.MultiplicativeNoise,
+    "TopCoding": la.financial.TopCoding,
+    "CreditCardMask": la.financial.CreditCardMask,
+    "TopCodingFixed": la.financial.TopCodingFixed,
+}
+
 
 def load_schema(config_path: str):
-    """Parse YAML config and create rule instances."""
+    """Parse a complete, valid YAML schema into rule instances."""
     with open(config_path, "r", encoding="utf-8") as f:
         config = yaml.safe_load(f)
 
-    if config is None:
-        return {}
-    if not isinstance(config, dict):
+    if not isinstance(config, dict) or not config:
         raise ValueError("Schema config must be a mapping: {column: {method, params}}")
 
     schema = {}
     for col, rule_def in config.items():
+        if not isinstance(col, str) or not col:
+            raise ValueError("Schema column names must be non-empty strings")
         if not isinstance(rule_def, dict):
-            print(f"Warning: Invalid rule format for column '{col}', skipping")
-            continue
+            raise ValueError(f"Schema for column '{col}' must be a mapping")
 
-        method_name = rule_def.get('method')
-        params = rule_def.get('params', {})
-        if not method_name:
-            print(f"Warning: Missing 'method' for column '{col}', skipping")
-            continue
+        method_name = rule_def.get("method")
+        params = rule_def.get("params", {})
+        if not isinstance(method_name, str) or method_name not in RULE_REGISTRY:
+            raise ValueError(f"Unknown or missing rule for column '{col}'")
+        if not isinstance(params, dict):
+            raise ValueError(f"Parameters for column '{col}' must be a mapping")
 
-        if hasattr(la.rules, method_name):
-            rule_cls = getattr(la.rules, method_name)
-        elif hasattr(la.financial, method_name):
-            rule_cls = getattr(la.financial, method_name)
-        else:
-            print(f"Warning: Unknown rule '{method_name}' for column '{col}'")
-            continue
-
-        schema[col] = rule_cls(**params)
+        try:
+            schema[col] = RULE_REGISTRY[method_name](**params)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(f"Invalid parameters for rule '{method_name}' in column '{col}'") from exc
 
     return schema
 
@@ -60,7 +67,7 @@ def _read_dataframe(path: str, engine_name: str):
     raise ValueError(f"Unsupported input format '{ext}'. Use .csv or .parquet")
 
 
-def _write_dataframe(df, path: str, engine_name: str):
+def _write_dataframe_to_path(df, path: str, engine_name: str):
     ext = Path(path).suffix.lower()
     if engine_name == "polars":
         if ext == ".csv":
@@ -79,14 +86,35 @@ def _write_dataframe(df, path: str, engine_name: str):
     raise ValueError(f"Unsupported output format '{ext}'. Use .csv or .parquet")
 
 
+def _atomic_write(path: str, writer) -> None:
+    output_path = Path(path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    temp_name = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            delete=False,
+            dir=output_path.parent,
+            prefix=f".{output_path.name}.",
+            suffix=output_path.suffix,
+        ) as temp_file:
+            temp_name = temp_file.name
+        writer(temp_name)
+        os.replace(temp_name, output_path)
+    finally:
+        if temp_name and os.path.exists(temp_name):
+            os.unlink(temp_name)
+
+
+def _write_dataframe(df, path: str, engine_name: str):
+    _atomic_write(path, lambda temp_path: _write_dataframe_to_path(df, temp_path, engine_name))
+
+
 def _read_text(path: str, encoding: str) -> str:
     return Path(path).read_text(encoding=encoding)
 
 
 def _write_text(path: str, text: str, encoding: str) -> None:
-    output_path = Path(path)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(text, encoding=encoding)
+    _atomic_write(path, lambda temp_path: Path(temp_path).write_text(text, encoding=encoding))
 
 
 def _read_token_scope(path: str) -> dict:
@@ -100,16 +128,33 @@ def _read_token_scope(path: str) -> dict:
 
 
 def _write_token_scope(path: str, tokens: dict) -> None:
-    scope_path = Path(path)
-    scope_path.parent.mkdir(parents=True, exist_ok=True)
-    scope_path.write_text(
+    _write_text(
+        path,
         json.dumps({"version": 1, "tokens": tokens}, ensure_ascii=False, indent=2) + "\n",
-        encoding="utf-8",
+        "utf-8",
     )
 
 
 def _parse_rule_names(value: str):
     return [item.strip() for item in value.split(",") if item.strip()]
+
+
+def _paths_refer_to_same_file(first: str, second: str) -> bool:
+    first_path = Path(first)
+    second_path = Path(second)
+    if first_path.resolve(strict=False) == second_path.resolve(strict=False):
+        return True
+    if first_path.exists() and second_path.exists():
+        return os.path.samefile(first_path, second_path)
+    return False
+
+
+def _validate_distinct_paths(**paths: str) -> None:
+    named_paths = [(name, path) for name, path in paths.items() if path is not None]
+    for index, (first_name, first_path) in enumerate(named_paths):
+        for second_name, second_path in named_paths[index + 1 :]:
+            if _paths_refer_to_same_file(first_path, second_path):
+                raise ValueError(f"{first_name} and {second_name} must refer to different files")
 
 
 def _add_vault_key_option(parser) -> None:
@@ -216,6 +261,14 @@ def _run_rag_cli(argv):
 
     args = parser.parse_args(argv)
 
+    if args.command in {"sanitize", "restore"}:
+        _validate_distinct_paths(
+            input_file=args.input_file,
+            output_file=args.output_file,
+            vault=args.vault,
+            scope_file=args.scope_file,
+        )
+
     if args.command == "inspect-vault":
         vault = _file_vault(args.vault_file, args)
         stats = vault.stats()
@@ -307,10 +360,14 @@ def main(argv=None):
 
     args = parser.parse_args(argv)
 
+    _validate_distinct_paths(
+        input_file=args.input_file,
+        output_file=args.output_file,
+        config_file=args.config,
+    )
+
     print(f"Loading schema from {args.config}...")
     schema = load_schema(args.config)
-    if not schema:
-        print("Warning: schema is empty. Output will match input.")
 
     print(f"Reading {args.input_file} using {args.engine}...")
     df = _read_dataframe(args.input_file, args.engine)

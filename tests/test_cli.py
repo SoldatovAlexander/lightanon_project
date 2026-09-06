@@ -128,6 +128,78 @@ def test_cli_exits_nonzero_and_writes_fail_closed_output(tmp_path, capsys):
     assert "[FAIL] Column 'salary': Error:" in output
 
 
+@pytest.mark.parametrize(
+    "schema_text",
+    [
+        "email:\n  method: Hahs\n",
+        "email:\n  params:\n    salt: secret\n",
+        "email: Hash\n",
+        "email:\n  method: Hash\n  params: secret\n",
+    ],
+)
+def test_cli_rejects_invalid_schema_before_writing_output(tmp_path, schema_text):
+    input_path = tmp_path / "input.csv"
+    output_path = tmp_path / "output.csv"
+    schema_path = tmp_path / "schema.yaml"
+    input_path.write_text("email\nreview@example.com\n", encoding="utf-8")
+    output_path.write_text("existing-output\n", encoding="utf-8")
+    schema_path.write_text(schema_text, encoding="utf-8")
+
+    with pytest.raises(ValueError):
+        cli.main([str(input_path), str(output_path), "-c", str(schema_path)])
+
+    assert output_path.read_text(encoding="utf-8") == "existing-output\n"
+
+
+def test_cli_rejects_empty_schema_before_writing_output(tmp_path):
+    input_path = tmp_path / "input.csv"
+    output_path = tmp_path / "output.csv"
+    schema_path = tmp_path / "schema.yaml"
+    input_path.write_text("email\nreview@example.com\n", encoding="utf-8")
+    output_path.write_text("existing-output\n", encoding="utf-8")
+    schema_path.write_text("{}\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="Schema config"):
+        cli.main([str(input_path), str(output_path), "-c", str(schema_path)])
+
+    assert output_path.read_text(encoding="utf-8") == "existing-output\n"
+
+
+def test_rag_cli_rejects_overlapping_output_vault_and_scope_paths(tmp_path):
+    input_path = tmp_path / "input.txt"
+    output_path = tmp_path / "output.txt"
+    vault_path = tmp_path / "vault.json"
+    scope_path = tmp_path / "scope.json"
+    input_path.write_text("Email: review@example.com", encoding="utf-8")
+    output_path.write_text("existing-output", encoding="utf-8")
+    vault_path.write_text("existing-vault", encoding="utf-8")
+    scope_path.write_text("existing-scope", encoding="utf-8")
+
+    for extra_args in (
+        ["--vault", str(output_path)],
+        ["--vault", str(vault_path), "--scope-file", str(vault_path)],
+        ["--vault", str(vault_path), "--scope-file", str(output_path)],
+    ):
+        with pytest.raises(ValueError, match="must refer to different files"):
+            cli.main(["rag", "sanitize", str(input_path), str(output_path), *extra_args])
+
+    assert output_path.read_text(encoding="utf-8") == "existing-output"
+    assert vault_path.read_text(encoding="utf-8") == "existing-vault"
+    assert scope_path.read_text(encoding="utf-8") == "existing-scope"
+
+
+def test_cli_rejects_output_path_that_is_config_file(tmp_path):
+    input_path = tmp_path / "input.csv"
+    config_path = tmp_path / "schema.yaml"
+    input_path.write_text("email\nreview@example.com\n", encoding="utf-8")
+    config_path.write_text("email:\n  method: Hash\n  params:\n    salt: secret\n", encoding="utf-8")
+
+    with pytest.raises(ValueError, match="must refer to different files"):
+        cli.main([str(input_path), str(config_path), "-c", str(config_path)])
+
+    assert "method: Hash" in config_path.read_text(encoding="utf-8")
+
+
 def test_rag_cli_restore_mask_policy(tmp_path):
     input_path = tmp_path / "input.txt"
     sanitized_path = tmp_path / "sanitized.txt"
